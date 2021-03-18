@@ -84,27 +84,65 @@ def init_parameters(num_of_neruals):
 
 def forward(x,W):
     Z = list([])
+    A = list([])
     for k in range(layers+1):
         if k==0:
             tmp = np.dot(W[k],x)
         else:
             tmp = np.dot(W[k],Z[k-1])
-        tmp_list = np.array([sigmoid(tmp[i]) for i in range(len(tmp))])
-        Z.append(tmp_list)
+        tmp_Zlist = np.array([tmp[i] for i in range(len(tmp))])
+        tmp_Alist = np.array([sigmoid(tmp[i]) for i in range(len(tmp))])
+        Z.append(tmp_Zlist)
+        A.append(tmp_Alist)
 
-    pred_y = Z[k-1]
-    return Z,pred_y
+    pred_y = A[k-1]
+    return Z,A,pred_y
 
 def back(W,Z,y,pred_y):
-    dW = W
-    for l in range(len(W)-1,-1,-1):
-        cost = MSE(y[0],Z[2])
-        print(l)
+    dW = list([])
+    dZ = list([])
+
+    for k in range(layers,-1,-1):
+        if k==layers:
+            tmp_dZlist = np.array([derivative_MSE(Z[k][i],pred_y[i]) for i in range(len(Z[k]))])
+            dZ.insert(0,tmp_dZlist)
+        else:
+            tmp_dZlist = list([])
+            for i in range(len(Z[k])):
+                dZtmp = 0
+                for j in range(len(Z[k+1])):
+                    # print('kij=',k,i,j)
+                    # print('len(Z[k+1])=',len(Z[k+1]))
+                    # print('dZ[0][j]=',dZ[0][j])
+                    # print('W[k+1][i][j]=',W[k+1][j][i])
+                    dZtmp += float(dZ[0][j] * W[k+1][j][i])
+                dZtmp = float(dZtmp*derivative_sigmoid(Z[k][i]))
+                tmp_dZlist.append(dZtmp)
+            dZ.insert(0,np.array(tmp_dZlist))
+            # tmp_dZlist = np.array([derivative_sigmoid(Z[k][i]) for i in range(len(Z[k]))])
+        # print(tmp_dZlist)
+
+    for i in range(len(W)):
+        for j in range(len(W[i])):
+            for k in range(len(W[i][j])):
+                print(i,j,k)
+
+    return dZ
+
 
 
 x,y = generate_linear(n=10)
+# print(x[0])
 
 num_of_neruals = [x.shape[1], 3, 3, y.shape[1]]
 W = init_parameters(num_of_neruals)
 
-Z,pred_y = forward(x[0],W)
+Z,A,pred_y = forward([3,5],W)
+# print('W=',W)
+# print(W[1])
+# print('W2=',W[2])
+# print(Z[0])
+# print(Z[1])
+# print(Z[2])
+dZ = back(W,Z,y,pred_y)
+# print(dZ)
