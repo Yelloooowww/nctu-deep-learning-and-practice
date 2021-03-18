@@ -2,9 +2,8 @@ import numpy as np
 import random
 import matplotlib.pyplot as plt
 
-batch_size = 16
 num_epochs = 300
-lr = 0.0002
+lr = 1
 layers = 2
 
 
@@ -19,7 +18,7 @@ def generate_linear(n=100):
             labels.append(0)
         else :
             labels.append(1)
-    return np.array(inputs),np.array(labels).reshape(n,1)
+    return np.array(inputs,dtype=np.float128),np.array(labels,dtype=np.float128).reshape(n,1)
 
 
 def generate_XOR_easy():
@@ -33,7 +32,7 @@ def generate_XOR_easy():
             continue
         inputs.append([0.1*i,-0.1*i])
         labels.append(1)
-    return np.array(inputs),np.array(labels).reshape(21,1)
+    return np.array(inputs,dtype=np.float128),np.array(labels,dtype=np.float128).reshape(21,1)
 
 
 def show_result(x,y,pred_y):
@@ -56,7 +55,7 @@ def show_result(x,y,pred_y):
 
 
 def sigmoid(x):
-    return 1.0/(1.0+np.exp(-x))
+    return float(1.0/(1.0+np.exp(-x)))
 
 def derivative_sigmoid(x):
     return np.multiply(x,1.0-x)
@@ -64,85 +63,100 @@ def derivative_sigmoid(x):
 def MSE(y,pred_y):
     cost = 0
     for i in range(len(y)):
-        print((y[i],pred_y[i]))
         cost = cost+ (y[i]-pred_y[i])**2
     cost = float(cost/len(y))
-    return cost
+    return float(cost)
 
 def derivative_MSE(y,pred_y):
-    return -2*(y-pred_y)
+    return float(-2*(y-pred_y))
 
-def init_parameters(num_of_neruals):
+def init_parameters(num_of_nodes):
     W = list([])
-    for k in range(layers+1):
-        if k==0:
-            tmp_list = [[1 for n in range(num_of_neruals[k])] for m in range(num_of_neruals[k+1])]
-        else:
-            tmp_list = [[1 for n in range(num_of_neruals[k])] for m in range(num_of_neruals[k+1])]
-        W.append(np.array(tmp_list))
+    for i in range(layers+1):
+        tmp_tmp_list = []
+        for j in range(num_of_nodes[i]):
+            tmp_list = []
+            for k in range(num_of_nodes[i+1]):
+                tmp_list.append( np.random.uniform(-1,1) )
+            tmp_tmp_list.append(tmp_list)
+        W.append(np.array(tmp_tmp_list,dtype=np.float128))
     return W
 
 def forward(x,W):
     Z = list([])
     A = list([])
-    for k in range(layers+1):
-        if k==0:
-            tmp = np.dot(W[k],x)
+    for l in range(layers+1):
+        if l==0:
+            Z.append(np.dot(x,W[l]))
+            A.append(np.array([float(sigmoid(item)) for item in Z[-1]],dtype=np.float128))
         else:
-            tmp = np.dot(W[k],Z[k-1])
-        tmp_Zlist = np.array([tmp[i] for i in range(len(tmp))])
-        tmp_Alist = np.array([sigmoid(tmp[i]) for i in range(len(tmp))])
-        Z.append(tmp_Zlist)
-        A.append(tmp_Alist)
+            Z.append(np.dot(A[-1],W[l]))
+            A.append(np.array([float(sigmoid(item)) for item in Z[-1]],dtype=np.float128))
 
-    pred_y = A[k-1]
+    pred_y = A[-1]
     return Z,A,pred_y
 
-def back(W,Z,y,pred_y):
-    dW = list([])
+def back(W,Z,A,pred_y,x,y):
+    # print(W,Z)
+    dW = W.copy()
     dZ = list([])
 
     for k in range(layers,-1,-1):
         if k==layers:
-            tmp_dZlist = np.array([derivative_MSE(Z[k][i],pred_y[i]) for i in range(len(Z[k]))])
-            dZ.insert(0,tmp_dZlist)
+            tmp_dZlist = []
+            for i in range(len(y)):
+                tmp_dZlist.append( float(derivative_MSE(y[i],pred_y[i])* derivative_sigmoid(Z[layers][i]) ) )
+            dZ.insert(0,np.array(tmp_dZlist,dtype=np.float128))
         else:
             tmp_dZlist = list([])
             for i in range(len(Z[k])):
                 dZtmp = 0
-                for j in range(len(Z[k+1])):
-                    # print('kij=',k,i,j)
-                    # print('len(Z[k+1])=',len(Z[k+1]))
-                    # print('dZ[0][j]=',dZ[0][j])
-                    # print('W[k+1][i][j]=',W[k+1][j][i])
-                    dZtmp += float(dZ[0][j] * W[k+1][j][i])
+                for j in range(len(dZ[0])):
+                    dZtmp += float(dZ[0][j] * W[k+1][i][j])
                 dZtmp = float(dZtmp*derivative_sigmoid(Z[k][i]))
                 tmp_dZlist.append(dZtmp)
-            dZ.insert(0,np.array(tmp_dZlist))
-            # tmp_dZlist = np.array([derivative_sigmoid(Z[k][i]) for i in range(len(Z[k]))])
-        # print(tmp_dZlist)
+            dZ.insert(0,np.array(tmp_dZlist,dtype=np.float128))
 
-    for i in range(len(W)):
+    for i in range(layers+1):
         for j in range(len(W[i])):
             for k in range(len(W[i][j])):
-                print(i,j,k)
+                if i==0:
+                    dW[i][j][k] = float(x[j] * dZ[i][k])
+                else:
+                    dW[i][j][k] = float(dZ[i-1][j] * dZ[i][k])
 
-    return dZ
+    return dW,dZ
+
+def update_weight(W,dW):
+    print(dW)
+    new_W = W.copy()
+    for i in range(layers+1):
+        for j in range(len(W[i])):
+            for k in range(len(W[i][j])):
+                new_W[i][j][k] = float(W[i][j][k]+lr*dW[i][j][k])
+
+    return new_W
 
 
 
-x,y = generate_linear(n=10)
-# print(x[0])
 
-num_of_neruals = [x.shape[1], 3, 3, y.shape[1]]
-W = init_parameters(num_of_neruals)
+if __name__ == '__main__':
+    # init
+    N = 10
+    x,y = generate_linear(n=N)
+    num_of_nodes = [x.shape[1], 5, 5, y.shape[1]]
+    W = init_parameters(num_of_nodes)
 
-Z,A,pred_y = forward([3,5],W)
-# print('W=',W)
-# print(W[1])
-# print('W2=',W[2])
-# print(Z[0])
-# print(Z[1])
-# print(Z[2])
-dZ = back(W,Z,y,pred_y)
-# print(dZ)
+    for epoch in range(1):
+        pred_y_list = []
+        for data_num in range(N):
+
+            Z,A,pred_y = forward(x[data_num],W)
+            pred_y_list.append(pred_y)
+            loss = MSE(y[data_num],pred_y)
+            dW,dZ = back(W,Z,A,pred_y,x[data_num],y[data_num]) #W,Z,A,pred_y,x,y
+            W = update_weight(W,dW)
+
+            print('epoch=',epoch,'data_num=',data_num,'Loss=',loss)
+
+    show_result(x,y,pred_y_list)
