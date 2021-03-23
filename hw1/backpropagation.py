@@ -63,7 +63,7 @@ def derivative_sigmoid(x):
 def MSE(y,pred_y):
     cost = 0
     for i in range(len(y)):
-        cost = cost+ (y[i]-pred_y[i])**2
+        cost += (y[i]-pred_y[i])*(y[i]-pred_y[i])
     cost = float(cost/len(y))
     return float(cost)
 
@@ -77,7 +77,8 @@ def init_parameters(num_of_nodes):
         for j in range(num_of_nodes[i]):
             tmp_list = []
             for k in range(num_of_nodes[i+1]):
-                tmp_list.append( np.random.uniform(-1,1) )
+                tmp_list.append( np.random.uniform(0,1) )
+                # tmp_list.append(1)
             tmp_tmp_list.append(tmp_list)
         W.append(np.array(tmp_tmp_list,dtype=np.float128))
     return W
@@ -97,7 +98,6 @@ def forward(x,W):
     return Z,A,pred_y
 
 def back(W,Z,A,pred_y,x,y):
-    # print(W,Z)
     dW = W.copy()
     dZ = list([])
 
@@ -105,7 +105,7 @@ def back(W,Z,A,pred_y,x,y):
         if k==layers:
             tmp_dZlist = []
             for i in range(len(y)):
-                tmp_dZlist.append( float(derivative_MSE(y[i],pred_y[i])* derivative_sigmoid(Z[layers][i]) ) )
+                tmp_dZlist.append( float(-derivative_sigmoid(Z[layers][i]) ) )
             dZ.insert(0,np.array(tmp_dZlist,dtype=np.float128))
         else:
             tmp_dZlist = list([])
@@ -128,7 +128,7 @@ def back(W,Z,A,pred_y,x,y):
     return dW,dZ
 
 def update_weight(W,dW):
-    print(dW)
+    # print(dW)
     new_W = W.copy()
     for i in range(layers+1):
         for j in range(len(W[i])):
@@ -142,21 +142,33 @@ def update_weight(W,dW):
 
 if __name__ == '__main__':
     # init
-    N = 10
+    N = 100
     x,y = generate_linear(n=N)
     num_of_nodes = [x.shape[1], 5, 5, y.shape[1]]
     W = init_parameters(num_of_nodes)
 
+
     for epoch in range(1):
+        dW_total = []
+        loss_total = []
         pred_y_list = []
         for data_num in range(N):
 
-            Z,A,pred_y = forward(x[data_num],W)
-            pred_y_list.append(pred_y)
-            loss = MSE(y[data_num],pred_y)
-            dW,dZ = back(W,Z,A,pred_y,x[data_num],y[data_num]) #W,Z,A,pred_y,x,y
-            W = update_weight(W,dW)
 
-            print('epoch=',epoch,'data_num=',data_num,'Loss=',loss)
+            Z,A,pred_y = forward(x[data_num],W)
+            if data_num<10 and epoch==0:print(pred_y)
+            pred_y_list.append(pred_y)
+            loss = y[data_num]-pred_y
+            dW,dZ = back(W,Z,A,pred_y,x[data_num],y[data_num]) #W,Z,A,pred_y,x,y
+
+            dW_total.append(dW)
+            loss_total.append(loss)
+
+
+        dW_mean = np.mean(np.array(dW_total), axis=0)
+        print(dW_mean)
+        W = update_weight(W,dW)
+        loss_mean = np.mean(np.array(loss_total), axis=0)
+        print('epoch=',epoch,'data_num=',data_num,'Loss=',loss_mean)
 
     show_result(x,y,pred_y_list)
