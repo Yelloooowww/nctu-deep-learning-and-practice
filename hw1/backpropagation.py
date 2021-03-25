@@ -2,6 +2,7 @@ import numpy as np
 import random
 import matplotlib.pyplot as plt
 from datetime import datetime
+from scipy.special import expit, logit
 
 
 num_epochs = 300
@@ -57,7 +58,10 @@ def show_result(x,y,pred_y):
 
 
 def sigmoid(x):
-    return float(1.0/(1.0+np.exp(-x)))
+    # if x< -99999:return 0
+    # if x>  99999:return 1
+    return 1.0/(1.0+np.exp(-x))
+
 
 def derivative_sigmoid(x):
     return np.multiply(x,1.0-x)
@@ -67,10 +71,10 @@ def MSE(y,pred_y):
     for i in range(len(y)):
         cost += (y[i]-pred_y[i])*(y[i]-pred_y[i])
     cost = float(cost/len(y))
-    return float(cost)
+    return cost
 
 def derivative_MSE(y,pred_y):
-    return float(-2*(y-pred_y))
+    return -2*(y-pred_y)
 
 def init_parameters(num_of_nodes):
     W = list([])
@@ -79,7 +83,7 @@ def init_parameters(num_of_nodes):
         for j in range(num_of_nodes[i]):
             tmp_list = []
             for k in range(num_of_nodes[i+1]):
-                tmp_list.append( np.random.uniform(-1,1) )
+                tmp_list.append( np.random.uniform(0,1) )
             tmp_tmp_list.append(tmp_list)
         W.append(np.array(tmp_tmp_list,dtype=np.float128))
     return W
@@ -104,7 +108,7 @@ def forward(x,W):
         # if not l==0:x = A[-1]
         x = np.dot(x,W[l])
         Z.append(x)
-        A.append(np.array([float(sigmoid(item)) for item in x],dtype=np.float128))
+        A.append(np.array([sigmoid(item) for item in x],dtype=np.float128))
         # Z.append(np.dot(x,W[l]))
         # A.append(np.array([float(sigmoid(item)) for item in Z[-1]],dtype=np.float128))
 
@@ -122,17 +126,17 @@ def back(W,Z,A,pred_y,x,y,num_of_nodes):
             tmp_dZlist = []
             for i in range(len(y)):
                 if y[i]-pred_y[i]>=0:
-                    tmp_dZlist.append( float(-derivative_sigmoid(Z[layers][i]) ) )
+                    tmp_dZlist.append( -derivative_sigmoid(Z[layers][i])  )
                 else:
-                    tmp_dZlist.append( float(derivative_sigmoid(Z[layers][i]) ) )
+                    tmp_dZlist.append(  derivative_sigmoid(Z[layers][i])  )
             dZ.insert(0,np.array(tmp_dZlist,dtype=np.float128))
         else:
             tmp_dZlist = list([])
             for i in range(len(Z[k])):
                 dZtmp = 0
                 for j in range(len(dZ[0])):
-                    dZtmp += float(dZ[0][j] * W[k+1][i][j])
-                dZtmp = float(dZtmp*derivative_sigmoid(Z[k][i]))
+                    dZtmp += dZ[0][j] * W[k+1][i][j]
+                dZtmp = dZtmp*derivative_sigmoid(Z[k][i])
                 tmp_dZlist.append(dZtmp)
             dZ.insert(0,np.array(tmp_dZlist,dtype=np.float128))
 
@@ -140,18 +144,18 @@ def back(W,Z,A,pred_y,x,y,num_of_nodes):
         for j in range(len(W[i])):
             for k in range(len(W[i][j])):
                 if i==0:
-                    dW[i][j][k] = float(x[j] * dZ[i][k])
+                    dW[i][j][k] = x[j] * dZ[i][k]
                 else:
-                    dW[i][j][k] = float(dZ[i-1][j] * dZ[i][k])
+                    dW[i][j][k] = dZ[i-1][j] * dZ[i][k]
     return dW,dZ
 
 def update_weight(W,dW):
     # print(dW)
-    new_W = W.copy()
+    new_W = init_parameters_zeros(num_of_nodes)
     for i in range(layers+1):
         for j in range(len(W[i])):
             for k in range(len(W[i][j])):
-                new_W[i][j][k] = float(W[i][j][k]+lr*dW[i][j][k])
+                new_W[i][j][k] = W[i][j][k]+lr*dW[i][j][k]
 
     return new_W
 
@@ -165,8 +169,8 @@ if __name__ == '__main__':
     num_of_nodes = [x.shape[1], 5, 5, y.shape[1]]
     W = init_parameters(num_of_nodes)
 
-
-    for epoch in range(100000):
+    loss_list = []
+    for epoch in range(300000):
         dW_total = []
         loss_total = []
         pred_y_list = []
@@ -194,14 +198,20 @@ if __name__ == '__main__':
                     dW_mean[i][j][k] = float( dW_mean[i][j][k]/len(dW_total) )
 
         loss_mean = np.mean(np.array(loss_total), axis=0)
+        loss_list.append(loss_mean)
 
-        if epoch%500==0:
+        if epoch%250==0 or loss_mean<0.3:
             now = datetime.now()
             dt_string = now.strftime("%d/%m/%Y %H:%M:%S")
             print(dt_string,' epoch=',epoch,'Loss=',loss_mean)
+
+        if loss_mean<0.3:break
         # print('epoch=',epoch,'Loss=',loss_mean)
 
         W = update_weight(W,dW)
     #
     show_result(x,y,pred_y_list)
+    # print(loss_list)
+    plt.plot(loss_list,'--', marker="s")
+    plt.show()
     for i in range(len(pred_y_list)):print(pred_y_list[i][0])
