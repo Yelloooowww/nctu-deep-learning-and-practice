@@ -1,11 +1,9 @@
 import numpy as np
-import random
 import matplotlib.pyplot as plt
 from datetime import datetime
-from scipy.special import expit, logit
 
 
-num_epochs = 300
+num_epochs = 50000
 lr = 0.1
 layers = 2
 batch_size = 100
@@ -50,9 +48,8 @@ def show_result(x,y,pred_y):
 
     plt.subplot(1,2,2)
     plt.title('Predict Result',fontsize=18)
-    MAX,MIN = max(pred_y),min(pred_y)
     for i in range(x.shape[0]):
-        if pred_y[i]<(MAX+MIN)/2.0:
+        if pred_y[i]<0.5:
             plt.plot(x[i][0],x[i][1],'ro')
         else:
             plt.plot(x[i][0],x[i][1],'bo')
@@ -61,7 +58,6 @@ def show_result(x,y,pred_y):
 
 def sigmoid(x):
     return 1.0/(1.0+np.exp(-x))
-
 
 def derivative_sigmoid(x):
     return np.multiply(x,1.0-x)
@@ -91,7 +87,6 @@ def init_parameters_zeros(num_of_nodes):
     return W
 
 def forward(x,W):
-    x,W = x.copy(),W.copy()
     Z = list([])
     A = list([])
     for l in range(layers+1):
@@ -103,7 +98,6 @@ def forward(x,W):
     return Z,A,pred_y
 
 def back(W,Z,A,pred_y,x,y,num_of_nodes):
-    W,Z,A,pred_y,x,y = W.copy(),Z.copy(),A.copy(),pred_y.copy(),x.copy(),y.copy()
     dW = init_parameters_zeros(num_of_nodes)
     dZ = list([])
 
@@ -111,12 +105,7 @@ def back(W,Z,A,pred_y,x,y,num_of_nodes):
         if k==layers:
             tmp_dZlist = []
             for i in range(len(y)):
-                # tmp_dZlist.append(derivative_sigmoid(A[layers][i]))
                 tmp_dZlist.append((y[i]-pred_y[i])*derivative_sigmoid(A[layers][i]))
-                # if y[i]-pred_y[i]>=0:
-                #     tmp_dZlist.append( derivative_sigmoid(Z[layers][i])  )
-                # else:
-                #     tmp_dZlist.append( -derivative_sigmoid(Z[layers][i])  )
             dZ.insert(0,np.array(tmp_dZlist,dtype=np.float128))
         if not k==layers:
             tmp_dZlist = list([])
@@ -132,21 +121,17 @@ def back(W,Z,A,pred_y,x,y,num_of_nodes):
         for j in range(len(W[i])):
             for k in range(len(W[i][j])):
                 if not i==0:
-                #     dZ[i-1][j] = 0
                     dW[i][j][k] = dZ[i-1][j] * dZ[i][k]
                 else:
                     dW[i][j][k] = x[j] * dZ[i][k]
-
     return dW,dZ
 
 def update_weight(W,dW):
-    W,dW = W.copy(),dW.copy()
     new_W = init_parameters_zeros(num_of_nodes)
     for i in range(layers+1):
         for j in range(len(W[i])):
             for k in range(len(W[i][j])):
                 new_W[i][j][k] = W[i][j][k]+lr*dW[i][j][k]
-
     return new_W
 
 
@@ -155,18 +140,13 @@ if __name__ == '__main__':
     # init
     N = 100
     x,y = generate_linear(n=N)
-    num_of_nodes = [x.shape[1],3,3,y.shape[1]]
+    # x,y = generate_XOR_easy()
+    num_of_nodes = [x.shape[1],2,2,y.shape[1]]
     W = init_parameters(num_of_nodes)
-    # print(W)
 
     loss_list = []
-    for epoch in range(50000):
-        dW_total = []
-        loss_total = []
-        pred_y_list = []
-
-        last = None
-        count = 0
+    for epoch in range(num_epochs):
+        dW_total, loss_total, pred_y_list, count = [], [], [], 0
         for data_num in range(N):
             count = count + 1
             Z,A,pred_y = forward(x[data_num],W)
@@ -174,11 +154,12 @@ if __name__ == '__main__':
             loss = abs(y[data_num]-pred_y)
             dW,dZ = back(W,Z,A,pred_y,x[data_num],y[data_num],num_of_nodes) #W,Z,A,pred_y,x,y
 
+            # batch
             dW_total.append(dW)
             loss_total.append(loss)
 
             if count == batch_size:
-                # dW_mean
+                # mean
                 dW_mean = init_parameters_zeros(num_of_nodes)
                 for l in range(len(dW_total)):
                     for i in range(layers+1):
@@ -189,25 +170,17 @@ if __name__ == '__main__':
                     for j in range(len(dW_mean[i])):
                         for k in range(len(dW_mean[i][j])):
                             dW_mean[i][j][k] = float( dW_mean[i][j][k]/len(dW_total) )
-
                 loss_mean = np.mean(np.array(loss_total), axis=0)
                 loss_list.append(loss_mean[0])
 
+                #update
                 W = update_weight(W,dW_mean)
                 count = 0
 
-        if epoch%100==0:
-        # if True:
+        if epoch % 100 == 0:
             now = datetime.now()
             dt_string = now.strftime("%d/%m/%Y %H:%M:%S")
             print(dt_string,' epoch=',epoch,'Loss=',loss_mean[0])
-            # if last == loss_mean:break
-            # last = loss_mean
-
-        # if loss_mean<0.3:break
-        # print('epoch=',epoch,'Loss=',loss_mean)
-
-
 
     show_result(x,y,pred_y_list)
     plt.plot(loss_list,'--', marker="s")
