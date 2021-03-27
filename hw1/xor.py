@@ -4,9 +4,9 @@ from datetime import datetime
 
 
 num_epochs = 100000
-lr = 0.1
+lr = 1
 layers = 2
-batch_size = 100
+batch_size = 6
 
 
 def generate_linear(n=100):
@@ -32,7 +32,7 @@ def generate_XOR_easy():
 
         if 0.1*i == 0.5:
             continue
-        inputs.append([0.1*i,-0.1*i])
+        inputs.append([0.1*i,1-0.1*i])
         labels.append(1)
     return np.array(inputs,dtype=np.float128),np.array(labels,dtype=np.float128).reshape(21,1)
 
@@ -48,7 +48,7 @@ def show_result(x,y,pred_y):
 
     plt.subplot(1,2,2)
     plt.title('Predict Result',fontsize=18)
-    for i in range(x.shape[0]):
+    for i in range(len(pred_y)):
         if pred_y[i]<0.5:
             plt.plot(x[i][0],x[i][1],'ro')
         else:
@@ -138,10 +138,10 @@ def update_weight(W,dW):
 
 if __name__ == '__main__':
     # init
-    N = 100
-    x,y = generate_linear(n=N)
-    # x,y = generate_XOR_easy()
-    num_of_nodes = [x.shape[1],2,2,y.shape[1]]
+    N = 21
+    # x,y = generate_linear(n=N)
+    x,y = generate_XOR_easy()
+    num_of_nodes = [x.shape[1],4,4,y.shape[1]]
     W = init_parameters(num_of_nodes)
 
     loss_list = []
@@ -171,18 +171,20 @@ if __name__ == '__main__':
                         for k in range(len(dW_mean[i][j])):
                             dW_mean[i][j][k] = float( dW_mean[i][j][k]/len(dW_total) )
                 loss_mean = np.mean(np.array(loss_total), axis=0)
-                loss_list.append(loss_mean[0])
+                # loss_list.append(loss_mean[0])
 
                 #update
                 W = update_weight(W,dW_mean)
                 count = 0
 
-        if epoch % 100 == 0:
+        if epoch % 500 == 0:
             now = datetime.now()
             dt_string = now.strftime("%d/%m/%Y %H:%M:%S")
             print(dt_string,' epoch=',epoch,'Loss=',loss_mean[0])
+            loss_list.append(loss_mean[0])
 
-    show_result(x,y,pred_y_list)
+
     plt.plot(loss_list,'--', marker="s")
     plt.show()
     for i in range(len(pred_y_list)):print(pred_y_list[i][0])
+    show_result(x,y,pred_y_list)
