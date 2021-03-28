@@ -58,8 +58,9 @@ def show_result(x,y,pred_y):
 
     plt.subplot(1,2,2)
     plt.title('Predict Result',fontsize=18)
+    MID = max(pred_y) * 0.5 + min(pred_y) * 0.5
     for i in range(len(pred_y)):
-        if pred_y[i]<0.5:
+        if pred_y[i]<MID:
             plt.plot(x[i][0],x[i][1],'ro')
         else:
             plt.plot(x[i][0],x[i][1],'bo')
@@ -67,8 +68,8 @@ def show_result(x,y,pred_y):
     # accuracy
     correct = 0
     for i in range(len(pred_y)):
-        if y[i]==0 and pred_y[i]<0.5 : correct +=1
-        if y[i]==1 and pred_y[i]>0.5 : correct +=1
+        if y[i]==0 and pred_y[i]<MID : correct +=1
+        if y[i]==1 and pred_y[i]>=MID : correct +=1
 
     accuracy = float(1.0 * correct/len(pred_y))
     print('accuracy : ',accuracy)
@@ -85,7 +86,7 @@ def init_parameters(num_of_nodes):
         for j in range(num_of_nodes[i]):
             tmp_list = []
             for k in range(num_of_nodes[i+1]):
-                tmp_list.append( np.random.uniform(0,1) )
+                tmp_list.append( np.random.uniform(-1,1) )
             tmp_tmp_list.append(tmp_list)
         W.append(np.array(tmp_tmp_list,dtype=np.float128))
     return W
@@ -127,14 +128,18 @@ class NN():
             return 1.0 * x
         if self.activation_func == 'tanh':
             return np.tanh(x)
+        if self.activation_func == "ReLU":
+            return np.maximum(0, x)
 
     def derivative_activation(self,x):
         if self.activation_func == 'sigmoid':
             return np.multiply(x,1.0-x)
         if self.activation_func == 'None':
-            return 1.0 * x
+            return 1.0
         if self.activation_func == 'tanh':
             return 1.0 - x ** 2
+        if self.activation_func == "ReLU":
+            return 1.0 * (x > 0)
 
     def forward(self,x,W):
         Z = list([])
@@ -202,7 +207,7 @@ class NN():
             return new_W
 
         if self.optimizers == 'AdaGrad':
-            epsilon = 0.00001
+            epsilon = 0.00000001
             n = 0
             for i in range(self.layers+1):
                 for j in range(len(W[i])):
@@ -225,7 +230,7 @@ class NN():
             mt_hat = init_parameters_zeros(self.num_of_nodes)
             new_W = init_parameters_zeros(self.num_of_nodes)
             beta = 0.9
-            epsilon = 0.00001
+            epsilon = 0.00000001
 
             try : _,__ = vt_old,mt_old
             except NameError:
@@ -254,12 +259,15 @@ class NN():
             x,y = generate_XOR_easy()
             self.N = 21
 
-        self.num_of_nodes = [x.shape[1],self.hidden_units,self.hidden_units,y.shape[1]]
+        # init W
+        self.num_of_nodes = [x.shape[1],y.shape[1]]
+        for i in range(self.layers) : self.num_of_nodes.insert(1,self.hidden_units)
         W = init_parameters(self.num_of_nodes)
 
         loss_list = []
+        dW_total, loss_total, pred_y_list, count = [], [], [], 0
         for epoch in range(self.num_epochs):
-            dW_total, loss_total, pred_y_list, count = [], [], [], 0
+            pred_y_list = []
             for data_num in range(self.N):
                 count = count + 1
                 Z,A,pred_y = self.forward(x[data_num],W)
@@ -287,13 +295,14 @@ class NN():
 
                     #update
                     W = self.update_weight(W,dW_mean)
-                    count = 0
+                    dW_total, loss_total, count = [], [], 0
 
             if epoch % 500 == 0:
                 now = datetime.now()
                 dt_string = now.strftime("%H:%M:%S")
                 print(dt_string,' epoch=',epoch,'Loss=',loss_mean[0])
             loss_list.append(loss_mean[0])
+            if loss_mean[0] < 0.00001 : break
 
 
         plt.plot(loss_list,'--', marker="s")
