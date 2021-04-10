@@ -703,7 +703,7 @@ public:
 				board next = move->after_state();
 				int count = 0;
 				double sigma_P_V = 0;
-				for (int i = 0; i < 16; i++){
+				for (int i = 0; i < 16; i++){ //All Possibile Next State
 					if (next.at(i) == 0) {
 						count ++ ;
 						next.set(i,2);
@@ -750,7 +750,6 @@ public:
 	 */
 	void update_episode(std::vector<state>& path, float alpha = 0.1) const {
 		// TODO
-		float exact = 0; //last_last_move.value()
 		for (path.pop_back() /* terminal state */; path.size()-2; path.pop_back()) {
 			int len = path.size();
 			state move = path[len-1]; //V(s'')
@@ -891,10 +890,10 @@ int main(int argc, const char* argv[]) {
 	std::srand(seed);
 
 	// initialize the features
-	tdl.add_feature(new pattern({ 0, 1, 2, 3, 4, 5 }));
-	tdl.add_feature(new pattern({ 4, 5, 6, 7, 8, 9 }));
-	tdl.add_feature(new pattern({ 0, 1, 2, 4, 5, 6 }));
-	tdl.add_feature(new pattern({ 4, 5, 6, 8, 9, 10 }));
+	// tdl.add_feature(new pattern({ 0, 1, 2, 3, 4, 5 }));
+	// tdl.add_feature(new pattern({ 4, 5, 6, 7, 8, 9 }));
+	// tdl.add_feature(new pattern({ 0, 1, 2, 4, 5, 6 }));
+	// tdl.add_feature(new pattern({ 4, 5, 6, 8, 9, 10 }));
 	tdl.add_feature(new pattern({ 0, 1, 2, 3 }));
 	tdl.add_feature(new pattern({ 4, 5, 6, 7 }));
 	tdl.add_feature(new pattern({ 8, 9, 10, 11 }));
