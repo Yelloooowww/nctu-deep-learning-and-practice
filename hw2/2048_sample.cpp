@@ -894,20 +894,32 @@ int main(int argc, const char* argv[]) {
 	std::srand(seed);
 
 	// initialize the features
-	tdl.add_feature(new pattern({ 0, 1, 2, 5, 9 }));
-	tdl.add_feature(new pattern({ 1, 2, 3, 6, 10 }));
-	tdl.add_feature(new pattern({ 4, 5, 6, 9, 13 }));
-	tdl.add_feature(new pattern({ 5, 6, 7, 10, 14 }));
-
-	tdl.add_feature(new pattern({ 0, 4, 5, 6, 8 }));
-	tdl.add_feature(new pattern({ 3, 5, 6, 7, 11 }));
-	tdl.add_feature(new pattern({ 4, 8, 9, 10, 12 }));
-	tdl.add_feature(new pattern({ 7, 9, 10, 11, 15 }));
-
-	tdl.add_feature(new pattern({ 1, 5, 8, 9, 10 }));
-	tdl.add_feature(new pattern({ 2, 6, 9, 10, 11 }));
-	tdl.add_feature(new pattern({ 5, 9, 12, 13, 14 }));
-	tdl.add_feature(new pattern({ 6, 10, 13, 14, 15 }));
+	for(int i=0;i<4;i++){
+		tdl.add_feature(new pattern({ 0+i*4, 1+i*4, 2+i*4, 3+i*4 }));
+		printf("%d %d %d %d\n", 0+i*4, 1+i*4, 2+i*4, 3+i*4 );
+		tdl.add_feature(new pattern({ 0+i, 4+i, 8+i, 12+i }));
+			printf("%d %d %d %d\n", 0+i, 4+i, 8+i, 12+i);
+	}
+	for(int i=0;i<3;i++){
+		for(int j=0;j<3;j++){
+			tdl.add_feature(new pattern({ 0+j+4*i, 1+j+4*i, 4+j+4*i, 5+j+4*i }));
+			printf("%d %d %d %d\n", 0+j+4*i, 1+j+4*i, 4+j+4*i, 5+j+4*i);
+		}
+	}
+	// tdl.add_feature(new pattern({ 0, 1, 2, 5, 9 }));
+	// tdl.add_feature(new pattern({ 1, 2, 3, 6, 10 }));
+	// tdl.add_feature(new pattern({ 4, 5, 6, 9, 13 }));
+	// tdl.add_feature(new pattern({ 5, 6, 7, 10, 14 }));
+	//
+	// tdl.add_feature(new pattern({ 0, 4, 5, 6, 8 }));
+	// tdl.add_feature(new pattern({ 3, 5, 6, 7, 11 }));
+	// tdl.add_feature(new pattern({ 4, 8, 9, 10, 12 }));
+	// tdl.add_feature(new pattern({ 7, 9, 10, 11, 15 }));
+	//
+	// tdl.add_feature(new pattern({ 1, 5, 8, 9, 10 }));
+	// tdl.add_feature(new pattern({ 2, 6, 9, 10, 11 }));
+	// tdl.add_feature(new pattern({ 5, 9, 12, 13, 14 }));
+	// tdl.add_feature(new pattern({ 6, 10, 13, 14, 15 }));
 
 	// restore the model from file
 	tdl.load("");
