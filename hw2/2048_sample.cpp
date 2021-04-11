@@ -754,11 +754,14 @@ public:
 			int len = path.size();
 			state move = path[len-1]; //V(s'')
 			state last_move = path[len-2]; //V(s')
-			state& last_last_move = path[len-3]; //V(s)
+			state last_last_move = path[len-3]; //V(s)
 
 			float error = last_last_move.reward() + move.value() - last_last_move.value();
 			debug << "update error = " << error << " for after state" << std::endl << move.after_state();
-			update(last_last_move.after_state(), alpha * error);
+
+			// update(last_last_move.before_state(), alpha * error);
+			update(last_move.before_state(), alpha * error);
+			// update(move.before_state(), alpha * error);
 		}
 		// ~TODO
 
@@ -891,19 +894,19 @@ int main(int argc, const char* argv[]) {
 
 	// initialize the features
 	tdl.add_feature(new pattern({ 0, 1, 2, 5, 9 }));
-	tdl.add_feature(new pattern({ 1, 2, 3, 6, 10 }));
+	// tdl.add_feature(new pattern({ 1, 2, 3, 6, 10 }));
 	tdl.add_feature(new pattern({ 4, 5, 6, 9, 13 }));
-	tdl.add_feature(new pattern({ 5, 6, 7, 10, 14 }));
+	// tdl.add_feature(new pattern({ 5, 6, 7, 10, 14 }));
 
 	tdl.add_feature(new pattern({ 0, 4, 5, 6, 8 }));
-	tdl.add_feature(new pattern({ 3, 5, 6, 7, 11 }));
+	// tdl.add_feature(new pattern({ 3, 5, 6, 7, 11 }));
 	tdl.add_feature(new pattern({ 4, 8, 9, 10, 12 }));
-	tdl.add_feature(new pattern({ 7, 9, 10, 11, 15 }));
+	// tdl.add_feature(new pattern({ 7, 9, 10, 11, 15 }));
 
 	tdl.add_feature(new pattern({ 1, 5, 8, 9, 10 }));
 	tdl.add_feature(new pattern({ 2, 6, 9, 10, 11 }));
-	tdl.add_feature(new pattern({ 5, 9, 12, 13, 14 }));
-	tdl.add_feature(new pattern({ 6, 10, 13, 14, 15 }));
+	// tdl.add_feature(new pattern({ 5, 9, 12, 13, 14 }));
+	// tdl.add_feature(new pattern({ 6, 10, 13, 14, 15 }));
 
 	// restore the model from file
 	tdl.load("");
