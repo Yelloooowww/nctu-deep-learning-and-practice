@@ -163,21 +163,28 @@ public:
 	/**
 	 * reset to initial state (2 random tile on board)
 	 */
-	void init() { raw = 0; popup(); popup(); }
+	void init() { raw = 0; popup(0, 0); popup(0, 0); }
 
 	/**
 	 * add a new random tile on board, or do nothing if the board is full
 	 * 2-tile: 90%
 	 * 4-tile: 10%
 	 */
-	void popup() {
+	int popup(int k, int n) {
 		int space[16], num = 0;
 		for (int i = 0; i < 16; i++)
 			if (at(i) == 0) {
 				space[num++] = i;
 			}
-		if (num)
-			set(space[rand() % num], rand() % 10 ? 1 : 2);
+		if (num){
+			if (k == 0){
+				set(space[rand() % num], rand() % 10 ? 1 : 2);
+			}else if (k == -1){
+				;
+			}else
+				set(space[n], k);
+		}
+		return num;
 	}
 
 	/**
@@ -463,21 +470,18 @@ public:
 	 * estimate the value of a given board
 	 */
 	virtual float estimate(const board& b) const {
-		// TODO
 		float value = 0;
 		for (int i = 0; i < iso_last; i++) {
 			size_t index = indexof(isomorphic[i], b);
 			value += operator[](index);
 		}
 		return value;
-		// ~TODO
 	}
 
 	/**
 	 * update the value of a given board, and return its updated value
 	 */
 	virtual float update(const board& b, float u) {
-		// TODO
 		float u_split = u / iso_last;
 		float value = 0;
 		for (int i = 0; i < iso_last; i++) {
@@ -486,7 +490,6 @@ public:
 			value += operator[](index);
 		}
 		return value;
-		// ~TODO
 	}
 
 	/**
@@ -523,12 +526,10 @@ public:
 protected:
 
 	size_t indexof(const std::vector<int>& patt, const board& b) const {
-		// TODO
 		size_t index = 0;
 		for (size_t i = 0; i < patt.size(); i++)
 			index |= b.at(patt[i]) << (4 * i);
 		return index;
-		// ~TODO
 	}
 
 	std::string nameof(const std::vector<int>& patt) const {
@@ -699,31 +700,16 @@ public:
 		state* best = after;
 		for (state* move = after; move != after + 4; move++) {
 			if (move->assign(b)) {
-				// TODO
-				board next = move->after_state();
-				int count = 0;
-				double sigma_P_V = 0;
-				for (int i = 0; i < 16; i++){ //All Possibile Next State
-					if (next.at(i) == 0) {
-						count ++ ;
-						next.set(i,2);
-						float V1 = estimate(next);
-						next.set(i,0); //clear
-						next.set(i,1);
-						float V9 = estimate(next);
-						next.set(i,0); //clear
-
-						sigma_P_V += (V1*0.1 + V9*0.9);
-					}
+				int esti_value = 0;
+				int num_empty = move->after_state().popup(-1, 0);
+				for (int i = 0; i < num_empty; i++){
+					board tmp1 = move->after_state();
+					board tmp2 = move->after_state();
+					tmp1.popup(1, i);
+					tmp2.popup(2, i);
+					esti_value += (1.0/num_empty) * 0.9 * estimate(tmp1) + (1.0/num_empty) * 0.1 * estimate(tmp2);
 				}
-				if(count!=0){
-					move->set_value(move->reward() + sigma_P_V/count);
-				}
-				if(count==0){
-					move->set_value(move->reward() + 0);
-				}
-				// ~TODO
-
+				move->set_value(move->reward() + esti_value);
 				if (move->value() > best->value())
 					best = move;
 			} else {
@@ -748,16 +734,16 @@ public:
 	 *  { (s0,s0',a0,r0), (s1,s1',a1,r1), (s2,s2,x,-1) }
 	 *  where (x,x,x,x) means (before state, after state, action, reward)
 	 */
-	void update_episode(std::vector<state>& path, float alpha = 0.1) const {
-		// TODO
+	void update_episode(std::vector<board>& path_s0, std::vector<state>& path_s1, std::vector<board>& path_s2, float alpha = 0.1) const {
 		float exact = 0;
-		for (path.pop_back() /* terminal state */; path.size(); path.pop_back()) {
-			state& move = path.back();
-			float error = move.reward() + exact - estimate(move.before_state());
+		for (path_s0.pop_back() /* terminal state */; path_s0.size(); path_s0.pop_back()) {
+			board& before = path_s0.back();
+			state& move = path_s1.back();
+			board& after = path_s2.back();
+			float error = move.reward() + exact - estimate(before);
 			debug << "update error = " << error << " for after state" << std::endl << move.after_state();
-			exact = update(move.before_state(), alpha * error);
+			exact = update(before, alpha * error);
 		}
-		// ~TODO
 	}
 
 	/**
@@ -779,7 +765,7 @@ public:
 	 *  '93.7%': 93.7% (937 games) reached 8192-tiles in last 1000 games (a.k.a. win rate of 8192-tile)
 	 *  '22.4%': 22.4% (224 games) terminated with 8192-tiles (the largest) in last 1000 games
 	 */
-	void make_statistic(size_t n, const board& b, int score, int unit = 100) {
+	void make_statistic(size_t n, const board& b, int score, int unit = 1000) {
 		scores.push_back(score);
 		maxtile.push_back(0);
 		for (int i = 0; i < 16; i++) {
@@ -873,11 +859,10 @@ private:
 
 int main(int argc, const char* argv[]) {
 	info << "TDL2048-Demo" << std::endl;
-
-	// std::ofstream score_out;
-	// score_out.open("score_out.txt");
-
 	learning tdl;
+    // 存score
+    // std::ofstream scoresave;
+    // scoresave.open ("./2048score");
 
 	// set the learning parameters
 	float alpha = 0.1;
@@ -890,44 +875,35 @@ int main(int argc, const char* argv[]) {
 	std::srand(seed);
 
 	// initialize the features
-	// for(int i=0;i<4;i++){
-	// 	tdl.add_feature(new pattern({ 0+i*4, 1+i*4, 2+i*4, 3+i*4 }));
-	// 	printf("%d %d %d %d\n", 0+i*4, 1+i*4, 2+i*4, 3+i*4 );
-	// 	tdl.add_feature(new pattern({ 0+i, 4+i, 8+i, 12+i }));
-	// 		printf("%d %d %d %d\n", 0+i, 4+i, 8+i, 12+i);
-	// }
-	// for(int i=0;i<3;i++){
-	// 	for(int j=0;j<3;j++){
-	// 		tdl.add_feature(new pattern({ 0+j+4*i, 1+j+4*i, 4+j+4*i, 5+j+4*i }));
-	// 		printf("%d %d %d %d\n", 0+j+4*i, 1+j+4*i, 4+j+4*i, 5+j+4*i);
-	// 	}
-	// }
-	tdl.add_feature(new pattern({ 0, 1, 2, 5, 9 }));
-	tdl.add_feature(new pattern({ 1, 2, 3, 6, 10 }));
-	tdl.add_feature(new pattern({ 4, 5, 6, 9, 13 }));
-	tdl.add_feature(new pattern({ 5, 6, 7, 10, 14 }));
+	tdl.add_feature(new pattern({ 0, 1, 2, 3, 4, 5 }));
+	tdl.add_feature(new pattern({ 4, 5, 6, 7, 8, 9 }));
+	tdl.add_feature(new pattern({ 0, 1, 2, 4, 5, 6 }));
+	tdl.add_feature(new pattern({ 4, 5, 6, 8, 9, 10 }));
+	tdl.add_feature(new pattern({ 0, 1, 2, 3 }));
+	tdl.add_feature(new pattern({ 4, 5, 6, 7 }));
+	tdl.add_feature(new pattern({ 8, 9, 10, 11 }));
+	tdl.add_feature(new pattern({ 12, 13, 14, 15 }));
+	tdl.add_feature(new pattern({ 0, 1, 4, 5 }));
+	tdl.add_feature(new pattern({ 2, 3, 6, 7 }));
+	tdl.add_feature(new pattern({ 8, 9, 12, 13 }));
+	tdl.add_feature(new pattern({ 10, 11, 14, 15 }));
+	tdl.add_feature(new pattern({ 5, 6, 9, 10 }));
+	tdl.add_feature(new pattern({ 1, 2, 5, 6 }));
+	tdl.add_feature(new pattern({ 4, 5, 8, 9 }));
+	tdl.add_feature(new pattern({ 9, 10, 13, 14 }));
+	tdl.add_feature(new pattern({ 6, 7, 10, 11 }));
 
-	tdl.add_feature(new pattern({ 0, 4, 5, 6, 8 }));
-	tdl.add_feature(new pattern({ 3, 5, 6, 7, 11 }));
-	tdl.add_feature(new pattern({ 4, 8, 9, 10, 12 }));
-	tdl.add_feature(new pattern({ 7, 9, 10, 11, 15 }));
-
-	tdl.add_feature(new pattern({ 1, 5, 8, 9, 10 }));
-	tdl.add_feature(new pattern({ 2, 6, 9, 10, 11 }));
-	tdl.add_feature(new pattern({ 5, 9, 12, 13, 14 }));
-	tdl.add_feature(new pattern({ 6, 10, 13, 14, 15 }));
-
-	tdl.add_feature(new pattern({ 0, 1, 4, 5, 8, 9 }));
-	tdl.add_feature(new pattern({ 1, 2, 5, 6, 9, 10 }));
-	// tdl.add_feature(new pattern({ 0, 1, 2, 4, 5, 6 }));
-	// tdl.add_feature(new pattern({ 4, 5, 6, 8, 9, 10 }));
 
 	// restore the model from file
-	tdl.load("output.bin");
+	tdl.load("./2048tmp.bin");
 
 	// train the model
-	std::vector<state> path;
-	path.reserve(20000);
+	std::vector<board> path_s0;
+	std::vector<state> path_s1;
+	std::vector<board> path_s2;
+	path_s0.reserve(20000);
+	path_s1.reserve(20000);
+	path_s2.reserve(20000);
 	for (size_t n = 1; n <= total; n++) {
 		board b;
 		int score = 0;
@@ -937,29 +913,45 @@ int main(int argc, const char* argv[]) {
 		b.init();
 		while (true) {
 			debug << "state" << std::endl << b;
+			// info << "before_state:" << b << std::endl;
+			path_s0.push_back(b);
 			state best = tdl.select_best_move(b);
-			path.push_back(best);
+			// info << "move_state:" << best << std::endl;
+			path_s1.push_back(best);
 
 			if (best.is_valid()) {
 				debug << "best " << best;
 				score += best.reward();
 				b = best.after_state();
-				b.popup();
+				b.popup(0, 0);
+				// info << "after_state:" << b << std::endl;
+				path_s2.push_back(b);
 			} else {
 				break;
 			}
 		}
+
+        // 存score
+        // scoresave   << score << std::endl;
+
 		debug << "end episode" << std::endl;
-		// score_out << score << std::endl;
+
+	//clean extra board and state
+	path_s0.pop_back();
+	path_s1.pop_back();
+
 		// update by TD(0)
-		tdl.update_episode(path, alpha);
+		tdl.update_episode(path_s0, path_s1, path_s2, alpha);
 		tdl.make_statistic(n, b, score);
-		path.clear();
+		path_s0.clear();
+		path_s1.clear();
+		path_s2.clear();
 	}
+    // 存score
+    // scoresave.close();
 
 	// store the model into file
-	tdl.save("");
-	// score_out.close();
+	// tdl.save("./2048tmp.bin");
 
 	return 0;
 }
