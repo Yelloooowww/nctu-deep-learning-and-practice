@@ -71,13 +71,13 @@ class DeepConvNet(nn.Module):
 
 
 i = 0
-def train( model, train_data, train_label, optimizer):
+def train( model, train_data, train_label, optimizer, batchsize):
 	global i
 	count = 0
 	model.train()
 	while count<1080:
-		data = torch.cuda.FloatTensor( train_data[i:i+64] )
-		target = torch.cuda.LongTensor( train_label[i:i+64] )
+		data = torch.cuda.FloatTensor( train_data[i:i+batchsize] )
+		target = torch.cuda.LongTensor( train_label[i:i+batchsize] )
 		optimizer.zero_grad()
 		output = model(data)
 		loss = nn.CrossEntropyLoss()
@@ -85,8 +85,8 @@ def train( model, train_data, train_label, optimizer):
 		loss.backward()
 		optimizer.step()
 
-		i = (i+64)%1080
-		count += 64
+		i = (i+batchsize)%1080
+		count += batchsize
 
 def test(model, test_data, test_label, epoch):
 	model.eval()
@@ -99,7 +99,7 @@ def test(model, test_data, test_label, epoch):
 	correct = 0
 	for i,pred_ans in enumerate(pred):
 		if pred[i] == target[i]: correct += 1
-	print('epoch= ',epoch,'test_loss= ',test_loss.item()/1080.0,' correct= ',correct/1080.0)
+	if epoch%20==0: print('epoch= ',epoch,'test_loss= ',test_loss.item()/1080.0,' correct= ',correct/1080.0)
 
 
 
@@ -110,19 +110,19 @@ if __name__ == '__main__':
 
 	model = EEG()
 	model.to(device)
-	optimizer = optim.Adam(model.parameters(),lr=0.0011)
-	scheduler = StepLR(optimizer, step_size=100, gamma=0.999)
-	for epoch in range(150):
-		train(model, train_data, train_label, optimizer)
+	optimizer = optim.Adam(model.parameters(),lr=0.00130)
+	scheduler = StepLR(optimizer, step_size=100, gamma=0.985)
+	for epoch in range(1000):
+		train(model, train_data, train_label, optimizer, batchsize=239)
 		test(model, test_data, test_label, epoch=epoch)
 		scheduler.step()
-	torch.save(model.state_dict(), "hw3_DeepConvNet.pt")
-
-
-	model = DeepConvNet()
-	model.to(device)
-	optimizer = optim.Adam(model.parameters(),lr=0.0001)
-	for epoch in range(150):
-		train(model, train_data, train_label, optimizer)
-		test(model, test_data, test_label, epoch=epoch)
 	torch.save(model.state_dict(), "hw3_EEG.pt")
+
+
+	# model = DeepConvNet()
+	# model.to(device)
+	# optimizer = optim.Adam(model.parameters(),lr=0.0001)
+	# for epoch in range(150):
+	# 	train(model, train_data, train_label, optimizer, batchsize=47)
+	# 	test(model, test_data, test_label, epoch=epoch)
+	# torch.save(model.state_dict(), "hw3_EEG.pt")
