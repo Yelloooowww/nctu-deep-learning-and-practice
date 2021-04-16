@@ -104,26 +104,25 @@ def test(model, test_data, test_label, epoch):
 
 
 if __name__ == '__main__':
+	torch.manual_seed(1)
 	device = torch.device('cuda:0')
 	train_data, train_label, test_data, test_label = read_bci_data()
 
 	model = EEG()
 	model.to(device)
-	optimizer = optim.Adam(model.parameters(),lr=1e-2)
-	scheduler = StepLR(optimizer, step_size=1, gamma=0.55)
-	for epoch in range(150):
-		train(model, train_data, train_label, optimizer)
-		test(model, test_data, test_label, epoch=epoch)
-		scheduler.step()
-	torch.save(model.state_dict(), "hw3_EEG.pt")
-
-
-	model = DeepConvNet()
-	model.to(device)
-	optimizer = optim.Adam(model.parameters(),lr=1e-2)
-	scheduler = StepLR(optimizer, step_size=1, gamma=0.8)
+	optimizer = optim.Adam(model.parameters(),lr=0.0011)
+	scheduler = StepLR(optimizer, step_size=100, gamma=0.999)
 	for epoch in range(150):
 		train(model, train_data, train_label, optimizer)
 		test(model, test_data, test_label, epoch=epoch)
 		scheduler.step()
 	torch.save(model.state_dict(), "hw3_DeepConvNet.pt")
+
+
+	model = DeepConvNet()
+	model.to(device)
+	optimizer = optim.Adam(model.parameters(),lr=0.0001)
+	for epoch in range(150):
+		train(model, train_data, train_label, optimizer)
+		test(model, test_data, test_label, epoch=epoch)
+	torch.save(model.state_dict(), "hw3_EEG.pt")
