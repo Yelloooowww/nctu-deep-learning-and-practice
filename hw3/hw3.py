@@ -136,11 +136,13 @@ if __name__ == '__main__':
 
 
 	for task in ['EEG', 'DeepConvNet']:
-		plt_array = []
+		plt_array_loss = []
+		plt_array_accuracy = []
 		for act_func in ['ReLU', 'LeakyReLU', 'ELU']:
 			for testset in ['train', 'test']:
 				print(str(task+'_'+act_func+'_'+testset))
-				plt_array_tmp = []
+				plt_array_loss_tmp = []
+				plt_array_accuracy_tmp = []
 
 
 				if testset == 'train':
@@ -154,21 +156,36 @@ if __name__ == '__main__':
 					model = DeepConvNet(act_func=act_func)
 
 				model.to(device)
-				optimizer = optim.Adam(model.parameters(),lr=0.00130)
+				optimizer = optim.Adam(model.parameters(),lr=0.001275)
 				for epoch in range(501):
 					train(model, train_data, train_label, optimizer, batchsize=239)
 					test_loss, correct = test(model, m_data, m_label)
-					plt_array_tmp.append(correct*100)
+					plt_array_accuracy_tmp.append(correct*100)
+					plt_array_loss_tmp.append(test_loss)
 					if epoch%100 == 0: print('epoch= ',epoch,' loss= ',test_loss,' correct= ',correct)
 
-				plt_array.append(plt_array_tmp)
-				torch.save(model.state_dict(), str('hw3'+task+act_func+testset+'.pt'))
+				plt_array_accuracy.append(plt_array_accuracy_tmp)
+				plt_array_loss.append(plt_array_loss_tmp)
+				# torch.save(model.state_dict(), str('hw3'+task+act_func+testset+'.pt'))
 
-		for arr in plt_array: plt.plot(arr)
-		plt.grid()
+
+
+		for arr in plt_array_accuracy: plt.plot(arr)
 		plt.title(str("Activation Functions comparision ("+task+')'))
-		plt.xlabel("Epoch")
-		plt.ylabel("Accuracy(%)")
+		plt.grid()
+		plt.xlabel('Epoch')
+		plt.ylabel('Accuracy(%)')
 		plt.legend(['relu_train', 'relu_test', 'leaky_relu_train', 'leaky_relu_test', 'elu_train', 'elu_test',])
-		plt.savefig(str('hw3'+task+act_func+testset+'.png'))
-		plt.show()
+		plt.savefig(str(task+'_accuracy.png'))
+		plt.close()
+		# plt.show()
+
+		for arr in plt_array_loss: plt.plot(arr)
+		plt.grid()
+		plt.title(str("Learning curve comparision ("+task+')'))
+		plt.xlabel('Epoch')
+		plt.ylabel('Loss')
+		plt.legend(['relu_train', 'relu_test', 'leaky_relu_train', 'leaky_relu_test', 'elu_train', 'elu_test',])
+		plt.savefig(str(task+'_loss.png'))
+		plt.close()
+		# plt.show()
