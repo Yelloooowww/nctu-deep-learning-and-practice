@@ -10,55 +10,72 @@ import torch.nn.functional as F
 import torch.optim as optim
 from torchvision import datasets, transforms
 from torch.optim.lr_scheduler import StepLR, MultiStepLR
+import matplotlib.pyplot as plt
 
 class EEG(nn.Module):
-	def __init__(self):
+	def __init__(self,act_func='ELU'):
 		super(EEG, self).__init__()
-		self.pipe = nn.Sequential(
+		if act_func == 'ELU': self.act_func = nn.ReLU()
+		if act_func == 'LeakyReLU': self.act_func = nn.LeakyReLU()
+		if act_func == 'ReLU': self.act_func = nn.ReLU()
+		self.pipe0 = nn.Sequential(
 			nn.Conv2d(in_channels=1, out_channels=16, kernel_size=(1,51), stride=(1,1),padding=(0,25), bias=False),
 			nn.BatchNorm2d(16, eps=1e-5, momentum=0.1, affine=True, track_running_stats=True),
 			nn.Conv2d(in_channels=16, out_channels=32, kernel_size=(2,1), stride=(1,1), groups=16, bias=False),
-			nn.BatchNorm2d(32, eps=1e-5, momentum=0.1, affine=True, track_running_stats=True),
-			nn.ELU(32),
+			nn.BatchNorm2d(32, eps=1e-5, momentum=0.1, affine=True, track_running_stats=True)
+		)
+		self.pipe1 = nn.Sequential(
 			nn.AvgPool2d(kernel_size=(1,4), stride=(1,4), padding=0),
 			nn.Dropout(p=0.25),
 			nn.Conv2d(in_channels=32, out_channels=32, kernel_size=(1,15),stride=(1,1),padding=(0,7), bias=False),
-			nn.BatchNorm2d(32, eps=1e-5, momentum=0.1, affine=True, track_running_stats=True),
-			nn.ELU(32),
+			nn.BatchNorm2d(32, eps=1e-5, momentum=0.1, affine=True, track_running_stats=True)
+		)
+		self.pipe2 = nn.Sequential(
 			nn.AvgPool2d(kernel_size=(1,8), stride=(1,8), padding=0),
 			nn.Dropout(p=0.25),
 			nn.Flatten(),
 			nn.Linear(in_features=736,out_features=2,bias=True)
 		)
 	def forward(self,x):
-		x = self.pipe(x)
+		x = self.pipe0(x)
+		x = self.act_func(x)
+		x = self.pipe1(x)
+		x = self.act_func(x)
+		x = self.pipe2(x)
 		return x
 
 
 class DeepConvNet(nn.Module):
-	def __init__(self):
+	def __init__(self,act_func='ELU'):
 		super(DeepConvNet, self).__init__()
+		if act_func == 'ELU': self.act_func = nn.ReLU()
+		if act_func == 'LeakyReLU': self.act_func = nn.LeakyReLU()
+		if act_func == 'ReLU': self.act_func = nn.ReLU()
 		C, T, N = 2, 750, 2
-		self.pipe = nn.Sequential(
+		self.pipe0 = nn.Sequential(
 			nn.Conv2d(in_channels=1, out_channels=25, kernel_size=(1,5)),
 			nn.Conv2d(in_channels=25, out_channels=25, kernel_size=(C,1)),
-			nn.BatchNorm2d(25, eps=1e-5, momentum=0.1),
-			nn.ELU(25),
+			nn.BatchNorm2d(25, eps=1e-5, momentum=0.1)
+		)
+		self.pipe1 = nn.Sequential(
 			nn.MaxPool2d(kernel_size=(1,2)),
 			nn.Dropout(p=0.5),
 			nn.Conv2d(in_channels=25, out_channels=50, kernel_size=(1,5)),
-			nn.BatchNorm2d(50, eps=1e-5, momentum=0.1),
-			nn.ELU(50),
+			nn.BatchNorm2d(50, eps=1e-5, momentum=0.1)
+		)
+		self.pipe2 = nn.Sequential(
 			nn.MaxPool2d(kernel_size=(1,2)),
 			nn.Dropout(p=0.5),
 			nn.Conv2d(in_channels=50, out_channels=100, kernel_size=(1,5)),
-			nn.BatchNorm2d(100, eps=1e-5, momentum=0.1),
-			nn.ELU(100),
+			nn.BatchNorm2d(100, eps=1e-5, momentum=0.1)
+		)
+		self.pipe3 = nn.Sequential(
 			nn.MaxPool2d(kernel_size=(1,2)),
 			nn.Dropout(p=0.5),
 			nn.Conv2d(in_channels=100, out_channels=200, kernel_size=(1,5)),
-			nn.BatchNorm2d(200, eps=1e-5, momentum=0.1),
-			nn.ELU(200),
+			nn.BatchNorm2d(200, eps=1e-5, momentum=0.1)
+		)
+		self.pipe4 = nn.Sequential(
 			nn.MaxPool2d(kernel_size=(1,2)),
 			nn.Dropout(p=0.5),
 			nn.Flatten(),
@@ -66,7 +83,15 @@ class DeepConvNet(nn.Module):
 		)
 
 	def forward(self,x):
-		x = self.pipe(x)
+		x = self.pipe0(x)
+		x = self.act_func(x)
+		x = self.pipe1(x)
+		x = self.act_func(x)
+		x = self.pipe2(x)
+		x = self.act_func(x)
+		x = self.pipe3(x)
+		x = self.act_func(x)
+		x = self.pipe4(x)
 		return x
 
 
@@ -88,7 +113,7 @@ def train( model, train_data, train_label, optimizer, batchsize):
 		i = (i+batchsize)%1080
 		count += batchsize
 
-def test(model, test_data, test_label, epoch):
+def test(model, test_data, test_label):
 	model.eval()
 	data = torch.cuda.FloatTensor( test_data )
 	target = torch.cuda.LongTensor( test_label )
@@ -99,7 +124,7 @@ def test(model, test_data, test_label, epoch):
 	correct = 0
 	for i,pred_ans in enumerate(pred):
 		if pred[i] == target[i]: correct += 1
-	if epoch%20==0: print('epoch= ',epoch,'test_loss= ',test_loss.item()/1080.0,' correct= ',correct/1080.0)
+	return test_loss.item()/1080.0 , correct/1080.0
 
 
 
@@ -108,21 +133,42 @@ if __name__ == '__main__':
 	device = torch.device('cuda:0')
 	train_data, train_label, test_data, test_label = read_bci_data()
 
-	model = EEG()
-	model.to(device)
-	optimizer = optim.Adam(model.parameters(),lr=0.00130)
-	scheduler = StepLR(optimizer, step_size=100, gamma=0.985)
-	for epoch in range(1000):
-		train(model, train_data, train_label, optimizer, batchsize=239)
-		test(model, test_data, test_label, epoch=epoch)
-		scheduler.step()
-	torch.save(model.state_dict(), "hw3_EEG.pt")
 
 
-	# model = DeepConvNet()
-	# model.to(device)
-	# optimizer = optim.Adam(model.parameters(),lr=0.0001)
-	# for epoch in range(150):
-	# 	train(model, train_data, train_label, optimizer, batchsize=47)
-	# 	test(model, test_data, test_label, epoch=epoch)
-	# torch.save(model.state_dict(), "hw3_EEG.pt")
+	for task in ['EEG', 'DeepConvNet']:
+		plt_array = []
+		for act_func in ['ReLU', 'LeakyReLU', 'ELU']:
+			for testset in ['train', 'test']:
+				print(str(task+'_'+act_func+'_'+testset))
+				plt_array_tmp = []
+
+
+				if testset == 'train':
+					m_data, m_label = train_data, train_label
+				elif testset == 'test':
+					m_data, m_label = test_data, test_label
+
+				if task == 'EEG':
+					model = EEG(act_func=act_func)
+				elif task == 'DeepConvNet':
+					model = DeepConvNet(act_func=act_func)
+
+				model.to(device)
+				optimizer = optim.Adam(model.parameters(),lr=0.00130)
+				for epoch in range(501):
+					train(model, train_data, train_label, optimizer, batchsize=239)
+					test_loss, correct = test(model, m_data, m_label)
+					plt_array_tmp.append(correct*100)
+					if epoch%100 == 0: print('epoch= ',epoch,' loss= ',test_loss,' correct= ',correct)
+
+				plt_array.append(plt_array_tmp)
+				torch.save(model.state_dict(), str('hw3'+task+act_func+testset+'.pt'))
+
+		for arr in plt_array: plt.plot(arr)
+		plt.grid()
+		plt.title(str("Activation Functions comparision ("+task+')'))
+		plt.xlabel("Epoch")
+		plt.ylabel("Accuracy(%)")
+		plt.legend(['relu_train', 'relu_test', 'leaky_relu_train', 'leaky_relu_test', 'elu_train', 'elu_test',])
+		plt.savefig(str('hw3'+task+act_func+testset+'.png'))
+		plt.show()
