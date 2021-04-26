@@ -139,7 +139,7 @@ if __name__ == '__main__':
 		plt_array_loss = []
 		plt_array_accuracy = []
 		for act_func in ['ReLU', 'LeakyReLU', 'ELU']:
-			for testset in ['train', 'test']:
+			for testset in ['train','test']:
 				print(str(task+'_'+act_func+'_'+testset))
 				plt_array_loss_tmp = []
 				plt_array_accuracy_tmp = []
@@ -156,13 +156,15 @@ if __name__ == '__main__':
 					model = DeepConvNet(act_func=act_func)
 
 				model.to(device)
-				optimizer = optim.Adam(model.parameters(),lr=0.001275)
+				optimizer = optim.Adam(model.parameters(),lr=0.0013)
+				scheduler = StepLR(optimizer, step_size=100, gamma=0.985)
 				for epoch in range(501):
-					train(model, train_data, train_label, optimizer, batchsize=239)
+					train(model, train_data, train_label, optimizer, batchsize=256)
 					test_loss, correct = test(model, m_data, m_label)
+					scheduler.step()
 					plt_array_accuracy_tmp.append(correct*100)
 					plt_array_loss_tmp.append(test_loss)
-					if epoch%100 == 0: print('epoch= ',epoch,' loss= ',test_loss,' correct= ',correct)
+					if epoch%250 == 0: print('epoch= ',epoch,' loss= ',test_loss,' correct= ',correct)
 
 				plt_array_accuracy.append(plt_array_accuracy_tmp)
 				plt_array_loss.append(plt_array_loss_tmp)
@@ -178,7 +180,7 @@ if __name__ == '__main__':
 		plt.legend(['relu_train', 'relu_test', 'leaky_relu_train', 'leaky_relu_test', 'elu_train', 'elu_test',])
 		plt.savefig(str(task+'_accuracy.png'))
 		plt.close()
-		# plt.show()
+		plt.show()
 
 		for arr in plt_array_loss: plt.plot(arr)
 		plt.grid()
@@ -188,4 +190,4 @@ if __name__ == '__main__':
 		plt.legend(['relu_train', 'relu_test', 'leaky_relu_train', 'leaky_relu_test', 'elu_train', 'elu_test',])
 		plt.savefig(str(task+'_loss.png'))
 		plt.close()
-		# plt.show()
+		plt.show()
