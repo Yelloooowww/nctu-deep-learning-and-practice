@@ -36,23 +36,18 @@ class RetinopathyLoader(data.Dataset):
         """
         self.img_path = img_path
         self.mode = mode
-
         self.img_names=np.squeeze(pd.read_csv('train_img.csv' if mode=='train' else 'test_img.csv').values)
         self.labels=np.squeeze(pd.read_csv('train_label.csv' if mode=='train' else 'test_label.csv').values)
         assert len(self.img_names)==len(self.labels),'length not the same'
         self.data_len=len(self.img_names)
-
         self.transformations=transforms.Compose([transforms.RandomHorizontalFlip(),transforms.RandomVerticalFlip(),transforms.ToTensor(),
                                                 transforms.Normalize((0.3749, 0.2602, 0.1857),(0.2526, 0.1780, 0.1291))])
         print(f'>> Found {self.data_len} images...')
-
     def __len__(self):
         return self.data_len
-
     def __getitem__(self, index):
         single_img_name=os.path.join(self.img_path,self.img_names[index]+'.jpeg')
         single_img=Image.open(single_img_name)  # read an PIL image
         img=self.transformations(single_img)
         label=self.labels[index]
-
         return img, label

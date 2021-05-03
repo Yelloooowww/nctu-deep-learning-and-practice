@@ -779,7 +779,7 @@ public:
 	 *  '93.7%': 93.7% (937 games) reached 8192-tiles in last 1000 games (a.k.a. win rate of 8192-tile)
 	 *  '22.4%': 22.4% (224 games) terminated with 8192-tiles (the largest) in last 1000 games
 	 */
-	void make_statistic(size_t n, const board& b, int score, int unit = 10) {
+	void make_statistic(size_t n, const board& b, int score, int unit = 100) {
 		scores.push_back(score);
 		maxtile.push_back(0);
 		for (int i = 0; i < 16; i++) {
