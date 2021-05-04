@@ -195,14 +195,14 @@ if __name__ == '__main__':
     device=torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     num_class = 5
-    batch_size = 2
+    batch_size = 4
     lr = 1e-3
-    epochs = 5
+    epochs = 10
     epochs_feature_extraction = 2
-    epochs_fine_tuning = 3
+    epochs_fine_tuning = 8
     momentum = 0.9
     weight_decay = 5e-4
-    Loss = nn.CrossEntropyLoss()
+    Loss = nn.CrossEntropyLoss(weight=torch.Tensor([1.0,10.565217391304348,4.906175771971497,29.591690544412607,35.55077452667814]).to(device))
 
     dataset_train=RetinopathyLoader(img_path='data',mode='train')
     loader_train=DataLoader(dataset=dataset_train,batch_size=batch_size,shuffle=True,num_workers=4)
@@ -261,14 +261,14 @@ if __name__ == '__main__':
 
 
     num_class = 5
-    batch_size = 2
+    batch_size = 4
     lr = 1e-3
-    epochs = 10
+    epochs = 20
     epochs_feature_extraction = 4
-    epochs_fine_tuning = 6
+    epochs_fine_tuning = 16
     momentum = 0.9
     weight_decay = 5e-4
-    Loss = nn.CrossEntropyLoss()
+    Loss = nn.CrossEntropyLoss(weight=torch.Tensor([1.0,10.565217391304348,4.906175771971497,29.591690544412607,35.55077452667814]).to(device))
 
     """
     resnet18 without pretrained weights
