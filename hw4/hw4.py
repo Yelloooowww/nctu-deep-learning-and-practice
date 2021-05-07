@@ -197,9 +197,9 @@ if __name__ == '__main__':
     num_class = 5
     batch_size = 4
     lr = 1e-3
-    epochs = 10
-    epochs_feature_extraction = 2
-    epochs_fine_tuning = 8
+    epochs = 20
+    epochs_feature_extraction = 4
+    epochs_fine_tuning = 16
     momentum = 0.9
     weight_decay = 5e-4
     Loss = nn.CrossEntropyLoss(weight=torch.Tensor([1.0,10.565217391304348,4.906175771971497,29.591690544412607,35.55077452667814]).to(device))
@@ -212,16 +212,16 @@ if __name__ == '__main__':
 
 
 
-    """
-    resnet50 without pretrained weights
-    """
-    model_wo=ResNet50(num_class=num_class,pretrained=False)
-    optimizer=optim.SGD(model_wo.parameters(),lr=lr,momentum=momentum,weight_decay=weight_decay)
-    df_wo_pretrained=train(model_wo,loader_train,loader_test,Loss,optimizer,epochs,device,num_class,'resnet50_wo_pretraining')
-    # test and save confusion matrix figure
-    confusion_matrix,_=evaluate(model_wo,loader_test,device,num_class)
-    figure=plot_confusion_matrix(confusion_matrix)
-    figure.savefig('ResNet50 (wo pretrained weights).png')
+    # """
+    # resnet50 without pretrained weights
+    # """
+    # model_wo=ResNet50(num_class=num_class,pretrained=False)
+    # optimizer=optim.SGD(model_wo.parameters(),lr=lr,momentum=momentum,weight_decay=weight_decay)
+    # df_wo_pretrained=train(model_wo,loader_train,loader_test,Loss,optimizer,epochs,device,num_class,'resnet50_wo_pretraining')
+    # # test and save confusion matrix figure
+    # confusion_matrix,_=evaluate(model_wo,loader_test,device,num_class)
+    # figure=plot_confusion_matrix(confusion_matrix)
+    # figure.savefig('ResNet50 (wo pretrained weights).png')
 
     """
     resnet50 with pretrained weights
@@ -243,77 +243,77 @@ if __name__ == '__main__':
     optimizer=optim.SGD(model_with.parameters(),lr=lr,momentum=momentum,weight_decay=weight_decay)
     df_secondstep=train(model_with,loader_train,loader_test,Loss,optimizer,epochs_fine_tuning,device,num_class,'resnet50_with_pretraining')
     df_with_pretrained=pd.concat([df_firststep,df_secondstep],axis=0,ignore_index=True)
-
-    # test and get a confusion matrix
-    confusion_matrix,_=evaluate(model_with,loader_test,device,num_class)
-    figure=plot_confusion_matrix(confusion_matrix)
-    figure.savefig('ResNet50 (with pretrained weights).png')
-
-    """
-    plot accuracy figure
-    """
-    figure=plot(df_wo_pretrained,df_with_pretrained,'Result Comparison(ResNet50)')
-    figure.savefig('Result Comparison(ResNet50).png')
-
-    print(df_wo_pretrained)
-    print(df_with_pretrained)
-
-
-
-    num_class = 5
-    batch_size = 4
-    lr = 1e-3
-    epochs = 20
-    epochs_feature_extraction = 4
-    epochs_fine_tuning = 16
-    momentum = 0.9
-    weight_decay = 5e-4
-    Loss = nn.CrossEntropyLoss(weight=torch.Tensor([1.0,10.565217391304348,4.906175771971497,29.591690544412607,35.55077452667814]).to(device))
-
-    """
-    resnet18 without pretrained weights
-    """
-    print('resnet18 without pretrained weights')
-    model_wo=ResNet18(num_class=num_class,pretrained=False)
-    optimizer=optim.SGD(model_wo.parameters(),lr=lr,momentum=momentum,weight_decay=weight_decay)
-    df_wo_pretrained=train(model_wo,loader_train,loader_test,Loss,optimizer,epochs,device,num_class,'resnet18_wo_pretraining')
-    # test and save confusion matrix figure
-    confusion_matrix,_=evaluate(model_wo,loader_test,device,num_class)
-    figure=plot_confusion_matrix(confusion_matrix)
-    figure.savefig('ResNet50 (wo pretrained weights).png')
-
-    """
-    resnet18 with pretrained weights
-        first feature extraction for few epochs, then finefuning for some epochs
-    """
-    print('resnet18 with pretrained weights')
-    model_with=ResNet18(num_class=num_class,pretrained=True)
-    # feature extraction
-    print('~~~ feature extraction ~~~')
-    params_to_update=[]
-    for name,param in model_with.named_parameters():
-        if param.requires_grad:
-            params_to_update.append(param)
-    optimizer=optim.SGD(params_to_update,lr=lr,momentum=momentum,weight_decay=weight_decay)
-    df_firststep=train(model_with,loader_train,loader_test,Loss,optimizer,epochs_feature_extraction,device,num_class,'resnet18_with_pretraining')
-    # finetuning
-    print('~~~ finetuning ~~~')
-    for param in model_with.parameters():
-        param.requires_grad=True
-    optimizer=optim.SGD(model_with.parameters(),lr=lr,momentum=momentum,weight_decay=weight_decay)
-    df_secondstep=train(model_with,loader_train,loader_test,Loss,optimizer,epochs_fine_tuning,device,num_class,'resnet18_with_pretraining')
-    df_with_pretrained=pd.concat([df_firststep,df_secondstep],axis=0,ignore_index=True)
-
-    # test and get a confusion matrix
-    confusion_matrix,_=evaluate(model_with,loader_test,device,num_class)
-    figure=plot_confusion_matrix(confusion_matrix)
-    figure.savefig('ResNet18 (with pretrained weights).png')
-
-    """
-    plot accuracy figure
-    """
-    figure=plot(df_wo_pretrained,df_with_pretrained,'Result Comparison(ResNet18)')
-    figure.savefig('Result Comparison(ResNet18).png')
-
-    print(df_wo_pretrained)
-    print(df_with_pretrained)
+    #
+    # # test and get a confusion matrix
+    # confusion_matrix,_=evaluate(model_with,loader_test,device,num_class)
+    # figure=plot_confusion_matrix(confusion_matrix)
+    # figure.savefig('ResNet50 (with pretrained weights).png')
+    #
+    # """
+    # plot accuracy figure
+    # """
+    # figure=plot(df_wo_pretrained,df_with_pretrained,'Result Comparison(ResNet50)')
+    # figure.savefig('Result Comparison(ResNet50).png')
+    #
+    # print(df_wo_pretrained)
+    # print(df_with_pretrained)
+    #
+    #
+    #
+    # num_class = 5
+    # batch_size = 4
+    # lr = 1e-3
+    # epochs = 20
+    # epochs_feature_extraction = 4
+    # epochs_fine_tuning = 16
+    # momentum = 0.9
+    # weight_decay = 5e-4
+    # Loss = nn.CrossEntropyLoss(weight=torch.Tensor([1.0,10.565217391304348,4.906175771971497,29.591690544412607,35.55077452667814]).to(device))
+    #
+    # """
+    # resnet18 without pretrained weights
+    # """
+    # print('resnet18 without pretrained weights')
+    # model_wo=ResNet18(num_class=num_class,pretrained=False)
+    # optimizer=optim.SGD(model_wo.parameters(),lr=lr,momentum=momentum,weight_decay=weight_decay)
+    # df_wo_pretrained=train(model_wo,loader_train,loader_test,Loss,optimizer,epochs,device,num_class,'resnet18_wo_pretraining')
+    # # test and save confusion matrix figure
+    # confusion_matrix,_=evaluate(model_wo,loader_test,device,num_class)
+    # figure=plot_confusion_matrix(confusion_matrix)
+    # figure.savefig('ResNet50 (wo pretrained weights).png')
+    #
+    # """
+    # resnet18 with pretrained weights
+    #     first feature extraction for few epochs, then finefuning for some epochs
+    # """
+    # print('resnet18 with pretrained weights')
+    # model_with=ResNet18(num_class=num_class,pretrained=True)
+    # # feature extraction
+    # print('~~~ feature extraction ~~~')
+    # params_to_update=[]
+    # for name,param in model_with.named_parameters():
+    #     if param.requires_grad:
+    #         params_to_update.append(param)
+    # optimizer=optim.SGD(params_to_update,lr=lr,momentum=momentum,weight_decay=weight_decay)
+    # df_firststep=train(model_with,loader_train,loader_test,Loss,optimizer,epochs_feature_extraction,device,num_class,'resnet18_with_pretraining')
+    # # finetuning
+    # print('~~~ finetuning ~~~')
+    # for param in model_with.parameters():
+    #     param.requires_grad=True
+    # optimizer=optim.SGD(model_with.parameters(),lr=lr,momentum=momentum,weight_decay=weight_decay)
+    # df_secondstep=train(model_with,loader_train,loader_test,Loss,optimizer,epochs_fine_tuning,device,num_class,'resnet18_with_pretraining')
+    # df_with_pretrained=pd.concat([df_firststep,df_secondstep],axis=0,ignore_index=True)
+    #
+    # # test and get a confusion matrix
+    # confusion_matrix,_=evaluate(model_with,loader_test,device,num_class)
+    # figure=plot_confusion_matrix(confusion_matrix)
+    # figure.savefig('ResNet18 (with pretrained weights).png')
+    #
+    # """
+    # plot accuracy figure
+    # """
+    # figure=plot(df_wo_pretrained,df_with_pretrained,'Result Comparison(ResNet18)')
+    # figure.savefig('Result Comparison(ResNet18).png')
+    #
+    # print(df_wo_pretrained)
+    # print(df_with_pretrained)
