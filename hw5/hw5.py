@@ -106,27 +106,17 @@ def decode_inference(decoder, z, c, maxlen, teacher=False, inputs=None):
 	for i in range(maxlen):
 		# get (1, word_size), (1,1,hidden_size)
 		x = x.detach()
-		output, hidden = decoder(
-			x,
-			hidden
-		)
+		output, hidden = decoder(x, hidden)
 		outputs.append(output)
 		output_onehot = torch.max(torch.softmax(output, dim=1), 1)[1]
-
 		# meet EOS
-		if output_onehot.item() == eos_token and not teacher:
-			break
-
-		if teacher:
-			x = inputs[i+1:i+2]
-		else:
-			x = output_onehot
+		if output_onehot.item() == eos_token and not teacher: break
+		if teacher: x = inputs[i+1:i+2]
+		else: x = output_onehot
 
 	# get (seq, word_size)
-	if len(outputs) != 0:
-		outputs = torch.cat(outputs, dim=0)
-	else:
-		outputs = torch.FloatTensor([]).view(0, word_size).to(device)
+	if len(outputs) != 0: outputs = torch.cat(outputs, dim=0)
+	else: outputs = torch.FloatTensor([]).view(0, word_size).to(device)
 
 	return outputs
 
@@ -153,9 +143,9 @@ class EncoderRNN(nn.Module):
 		c = self.condition(input_condition)
 		hidden = torch.cat((init_hidden, c), dim=2)# get (1,1,hidden_size)
 		x = self.word_embedding(inputs).view(-1, 1, self.hidden_size)# get (seq, 1, hidden_size)
-		out, (h_n, c_n) = self.lstm(hidden)
-		m = self.mean(hidden)
-		logvar = self.logvar(hidden)
+		out, (h_n, c_n) = self.lstm(x)
+		m = self.mean(h_n)
+		logvar = self.logvar(h_n)
 		z = self.sample_z() * torch.exp(logvar/2) + m
 		return z, m, logvar
 
@@ -188,13 +178,16 @@ class DecoderRNN(nn.Module):
 		return self.latent_to_hidden(latent)
 
 	def forward(self, x, hidden):
-		output, (h_n, c_n) = self.lstm(hidden)
+		output = self.word_embedding(x).view(1, 1, -1)
+		# output = F.relu(output)
+		output, (h_n, c_n) = self.lstm(output)
 		output = self.out(output).view(-1, self.word_size)# get (1, word_size)
 		return output, hidden
 
 #############################################################################
 def KLD_weight_annealing(epoch):
-	slope = 0.001
+	# slope = 0.001
+	slope = 0.1
 	scope = (1.0 / slope)*2
 	w = (epoch % scope) * slope
 	if w > 1.0: w = 1.0
@@ -269,7 +262,6 @@ def evaluation(encoder, decoder, dataset,show=True):
 			output_str = train_dataset.chardict.stringFromLongtensor(outputs)
 			print(output_str,end=' ')
 		print('')
-			# print('{:20s} : {}'.format(train_dataset.tenses[i],output_str))
 	return blue_score
 
 
@@ -283,8 +275,6 @@ if __name__=='__main__':
 	# config
 	train_dataset = wordsDataset()
 	test_dataset = wordsDataset(False)
-	print('len(train_dataset)=',len(train_dataset))
-	print('len(test_dataset)=',len(test_dataset))
 
 	word_size = train_dataset.chardict.n_words
 	num_condition = len(train_dataset.tenses)
@@ -296,7 +286,7 @@ if __name__=='__main__':
 	empty_input_ratio = 0.1
 	KLD_weight = 0.0
 	LR = 0.05
-	epoch_size = 3
+	epoch_size = 500
 
 
 
@@ -348,8 +338,9 @@ if __name__=='__main__':
 			encoder_optimizer.step()
 			decoder_optimizer.step()
 
+		show_flag = True if epoch%50==0 else False
 		# evaluation
-		all_score = evaluation(encoder, decoder, test_dataset, show=False)
+		all_score = evaluation(encoder, decoder, test_dataset, show=show_flag)
 		BLEU.append(np.mean(all_score))
 		Crossentropyloss.append(np.mean(Crossentropyloss_list))
 		KLloss.append(np.mean(KLloss_list))
@@ -358,11 +349,11 @@ if __name__=='__main__':
 
 
 	fig = plt.figure()
-	b = plt.plot(BLEU,color='r')
-	cl = plt.plot(Crossentropyloss,color='g')
-	kll = plt.plot(KLloss,color='b')
-	plt.ylabel('epoch')
-	plt.legend([b,cl,kll],['BLEU','Crossentropyloss','KLloss'])
-
+	bleeeu = plt.plot(BLEU,color='r')
+	klloss = plt.plot(KLloss,color='b')
+	ax = plt.gca().twinx()
+	closs = ax.plot(Crossentropyloss,color='g')
+	plt.xlabel('epoch')
+	# ax.legend([bleeeu,klloss,closs],[BLEU,KLloss,Crossentropyloss])
 	plt.show()
 	fig.savefig('BLEU'+'Crossentropyloss'+'KLloss'+'.png')
