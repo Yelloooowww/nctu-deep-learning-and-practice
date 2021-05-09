@@ -20,10 +20,10 @@ hidden_size = 256  # LSTM hidden size
 latent_size = 32
 conditional_size = 8
 LR = 0.05
-epochs = 100000
+epochs = 75
 kl_annealing_type='cycle'  # 'monotonic' or 'cycle'
 time = 2
-batch_size = 512
+batch_size = 1
 #if('monotonic'): time is # of epoch for kl_weight from 0.0 to reach 1.0
 #if('cycle'):     time is # of cycle
 
@@ -71,20 +71,19 @@ if __name__=='__main__':
         BLEUscore_list.append(BLEUscore)
         # print(conversion)
         # print(generated_words)
-        if epoch % 100 == 0:
-            print(f'epoch: {epoch:>2d}/{epochs}  tf_ratio:{teacher_forcing_ratio:.2f}  kl_weight:{kl_weight:.2f}')
-            for i in range(len(generated_words)):
-                print(generated_words[i])
-            print('Gaussian score:',Gaussianscore)
+        print(f'epoch: {epoch:>2d}/{epochs}  tf_ratio:{teacher_forcing_ratio:.2f}  kl_weight:{kl_weight:.2f}')
+        for i in range(len(generated_words)):
+            print(generated_words[i])
+        print('Gaussian score:',Gaussianscore)
+        print(' ')
+        # print(f'CE:{CEloss:.4f} + KL:{KLloss:.4f} = {CEloss+KLloss:.4f}')
+        for i in range(len(conversion)):
+            print('input:', conversion[i][0])
+            print('target:', conversion[i][1])
+            print('prediction:', conversion[i][2])
             print(' ')
-            # print(f'CE:{CEloss:.4f} + KL:{KLloss:.4f} = {CEloss+KLloss:.4f}')
-            for i in range(len(conversion)):
-                print('input:', conversion[i][0])
-                print('target:', conversion[i][1])
-                print('prediction:', conversion[i][2])
-                print(' ')
-            print(f'Average BLEU-4 socre:{BLEUscore:.4f}') # Gaussian score:{Gaussianscore:.4f}')
-            print(' ')
+        print(f'Average BLEU-4 socre:{BLEUscore:.4f}') # Gaussian score:{Gaussianscore:.4f}')
+        print(' ')
 
         """
         update best model wts

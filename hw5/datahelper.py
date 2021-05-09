@@ -12,15 +12,17 @@ class DataTransformer:
         self.max_length=0  # max length of the training data word(contain 'EOS')
 
     def build_char2idx(self):
-        # dictionary={'SOS':0,'EOS':1}
-        dictionary={'SOS':0,'EOS':1,'None':2}
-        dictionary.update([(chr(i+97),i+3) for i in range(0,26)])
+        dictionary={'SOS':0,'EOS':1}
+        # dictionary={'SOS':0,'EOS':1,'None':2}
+        dictionary.update([(chr(i+97),i+2) for i in range(0,26)])
+        # dictionary.update([(chr(i+97),i+3) for i in range(0,26)])
         return dictionary
 
     def build_idx2char(self):
-        # dictionary={0:'SOS',1:'EOS'}
-        dictionary={0:'SOS',1:'EOS',2:'None'}
-        dictionary.update([(i+3,chr(i+97)) for i in range(0,26)])
+        dictionary={0:'SOS',1:'EOS'}
+        # dictionary={0:'SOS',1:'EOS',2:'None'}
+        dictionary.update([(i+2,chr(i+97)) for i in range(0,26)])
+        # dictionary.update([(i+3,chr(i+97)) for i in range(0,26)])
         return dictionary
 
     def string2tensor(self,string):
@@ -30,7 +32,7 @@ class DataTransformer:
         """
         indices=[self.char2idx[char] for char in string]
         indices.append(self.char2idx['EOS'])
-        while len(indices) < 16:indices.append(self.char2idx['None'])
+        # while len(indices) < 16:indices.append(self.char2idx['None'])
         # print('string=',string)
         # print('tensor=',torch.tensor(indices,dtype=torch.long).view(-1,1))
         return torch.tensor(indices,dtype=torch.long).view(-1,1)
