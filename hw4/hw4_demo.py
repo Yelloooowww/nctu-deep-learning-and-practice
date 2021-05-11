@@ -215,12 +215,14 @@ if __name__ == '__main__':
     model_demo = ResNet18(num_class=5,pretrained=True)
     model_demo.load_state_dict(torch.load('models/resnet18_with_pretraining.pt'))
     model_demo = model_demo.to(device)
-    # confusion_matrix,acc = evaluate(model_demo,loader_test,device,5)
-    # print('acc = ',acc)
+    for i in range(10):
+        pass
+        confusion_matrix,acc = evaluate(model_demo,loader_test,device,5)
+        print('acc = ',acc)
 
-    # finetuning
-    print('~~~ finetuning ~~~')
-    for param in model_demo.parameters():
-        param.requires_grad=True
-    optimizer=optim.SGD(model_demo.parameters(),lr=lr,momentum=momentum,weight_decay=weight_decay)
-    train(model_demo,loader_train,loader_test,Loss,optimizer,epochs_fine_tuning,device,num_class,'resnet18_with_pretraining')
+    # # finetuning
+    # print('~~~ finetuning ~~~')
+    # for param in model_demo.parameters():
+    #     param.requires_grad=True
+    # optimizer=optim.SGD(model_demo.parameters(),lr=lr,momentum=momentum,weight_decay=weight_decay)
+    # train(model_demo,loader_train,loader_test,Loss,optimizer,epochs_fine_tuning,device,num_class,'resnet18_with_pretraining')
