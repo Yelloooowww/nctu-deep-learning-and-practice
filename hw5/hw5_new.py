@@ -353,8 +353,8 @@ if __name__=='__main__':
 
 		if KL_cost_annealing == 'cyclical':
 			tmp = epoch%10
-			if tmp < 5 : kld_w = 2
-			else: kld_w = tmp*0.4
+			if tmp < 5 : kld_w = 4
+			else: kld_w = tmp*0.8
 		if KL_cost_annealing == 'monotonic':
 			if epoch < epochs*0.5 : kld_w = 1
 			else : kld_w = 1-(epoch-epochs*0.5)/(epochs*0.5)
@@ -363,9 +363,9 @@ if __name__=='__main__':
 
 		# tfr = 1.-(1./epochs)*epoch if epoch % 2 ==0  else 0
 		# tfr = 1.-(1./epochs)*epoch
-		if epoch < epochs*0.5 : tfr = 0.5
+		if epoch < epochs*0.1 : tfr = 0.9
 		else :
-			tfr = max(0.5-0.5*(1/epochs)*epoch, 0)
+			tfr = max(0.9-(1./epochs)*epoch, 0)
 
 		encoder.train()
 		decoder.train()
