@@ -154,7 +154,7 @@ class DecoderRNN(nn.Module):
 	def forward(self, input_seq, hidden, cell):
 		out, (h_n, c_n) = self.lstm(input_seq, (hidden, cell) )
 		output = self.out(out[0])
-		output = self.softmax(output)
+		# output = self.softmax(output)
 		return output.to(device), out, (h_n, c_n) # output-> prob. distrubution ; out -> latant
 
 	def condition(self, c):
@@ -173,7 +173,7 @@ condition_size = 8
 teacher_forcing_ratio = 0.5
 KLD_weight = 0.5
 LR = 0.05
-epochs = 500
+epochs = 1000
 KL_cost_annealing = 'cyclical' # or 'monotonic'
 
 encoder = EncoderRNN(word_size, hidden_size, latent_size, num_condition, condition_size).to(device)
@@ -351,21 +351,21 @@ if __name__=='__main__':
 	# scaler = torch.cuda.amp.GradScaler()
 	for epoch in range(1, epochs+1):
 
-		if KL_cost_annealing == 'cyclical':
-			tmp = epoch%10
-			if tmp < 5 : kld_w = 4
-			else: kld_w = tmp*0.8
-		if KL_cost_annealing == 'monotonic':
-			if epoch < epochs*0.5 : kld_w = 1
-			else : kld_w = 1-(epoch-epochs*0.5)/(epochs*0.5)
-		# kld_w = get_kl_weight(epoch,epochs,'cycle',1)
+		# if KL_cost_annealing == 'cyclical':
+		# 	tmp = epoch%10
+		# 	if tmp < 5 : kld_w = 4
+		# 	else: kld_w = tmp*0.8
+		# if KL_cost_annealing == 'monotonic':
+		# 	if epoch < epochs*0.5 : kld_w = 1
+		# 	else : kld_w = 1-(epoch-epochs*0.5)/(epochs*0.5)
+		kld_w = get_kl_weight(epoch,epochs,'cycle',2)
 
 
 		# tfr = 1.-(1./epochs)*epoch if epoch % 2 ==0  else 0
-		# tfr = 1.-(1./epochs)*epoch
-		if epoch < epochs*0.1 : tfr = 0.9
-		else :
-			tfr = max(0.9-(1./epochs)*epoch, 0)
+		tfr = 1.-(1./epochs)*epoch
+		# if epoch < epochs*0.1 : tfr = 0.9
+		# else :
+		# 	tfr = max(0.9-(1./epochs)*epoch, 0)
 
 		encoder.train()
 		decoder.train()
@@ -383,7 +383,7 @@ if __name__=='__main__':
 			encoder_optimizer.zero_grad()
 			_, _, _, z, mean, logvar = encoder(inputs, c)
 			use = True if random.random() < tfr else False
-			outputs, _ = use_decoder(z, c, inputs, use_teacher_forcing=use) #inputs = ground truth
+			outputs, entropy_loss = use_decoder(z, c, inputs, use_teacher_forcing=use) #inputs = ground truth
 			#
 			# outputs_onehot = torch.max(torch.softmax(outputs, dim=1), 1)[1]
 			# inputs_str = train_dataset.chardict.stringFromLongtensor(inputs, check_end=True)
@@ -394,7 +394,7 @@ if __name__=='__main__':
 			output_length = outputs.size(0)
 			# CrossEntropyLoss Input: (N, C)(N,C) where C = number of classes
 			# CrossEntropyLoss Target: (N)
-			entropy_loss = criterion(outputs, inputs[1:1+output_length].to(device))
+			# entropy_loss = criterion(outputs, inputs[1:1+output_length].to(device))
 
 			kld_loss = KL_loss(mean, logvar)
 			# # NEW

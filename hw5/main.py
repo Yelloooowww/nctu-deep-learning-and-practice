@@ -20,7 +20,7 @@ hidden_size = 256  # LSTM hidden size
 latent_size = 32
 conditional_size = 8
 LR = 0.05
-epochs = 75
+epochs = 1000
 kl_annealing_type='cycle'  # 'monotonic' or 'cycle'
 time = 2
 batch_size = 1
@@ -48,6 +48,7 @@ if __name__=='__main__':
 
     print('~~~ START ~~~')
     for epoch in range(1,epochs+1):
+        if epoch > 100:break
         """
         train
         """
