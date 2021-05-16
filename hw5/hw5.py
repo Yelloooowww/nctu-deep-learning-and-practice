@@ -75,8 +75,8 @@ class wordsDataset(Dataset):
 				[2, 1],  # pg -> tp
 			])
 
-		self.tenses = ['simple-present','third-person','present-progressive','simple-past']
-		# self.tenses = [0,1,2,3]
+		# self.tenses = ['simple-present','third-person','present-progressive','simple-past']
+		self.tenses = [0,1,2,3] #['simple-present','third-person','present-progressive','simple-past']
 		self.chardict = CharDict()
 		self.train = train
 
@@ -94,11 +94,6 @@ class wordsDataset(Dataset):
 			co = self.targets[index, 1]
 			return i, ci, o, co
 
-
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-train_dataset = wordsDataset()
-test_dataset = wordsDataset(False)
-
 ################################models###################################
 #Encoder
 class EncoderRNN(nn.Module):
@@ -108,34 +103,48 @@ class EncoderRNN(nn.Module):
 	):
 		super(EncoderRNN, self).__init__()
 		self.hidden_size = hidden_size
+		self.cell_size = hidden_size
 		self.condition_size = condition_size
 		self.latent_size = latent_size
 		self.condition_embedding = nn.Embedding(num_condition, condition_size)
 		self.word_embedding = nn.Embedding(word_size, hidden_size)
-		self.lstm = nn.LSTM(hidden_size, hidden_size)
-		self.dropout = nn.Dropout()
+		self.lstm = nn.LSTM(input_size=hidden_size,hidden_size=hidden_size)
+		self.mean = nn.Linear(hidden_size, latent_size)
+		self.logvar = nn.Linear(hidden_size, latent_size)
+		# self.dropout = nn.Dropout()
+		print('EncoderRNN init done')
 
-	def forward(self, inputs, init_hidden, input_condition):
-		# encoder(inputs[1:-1].to(device), encoder.initHidden(), input_condition)
-
-		c = self.condition(input_condition)
-		hidden_size = torch.cat((init_hidden, c), dim=2)# get (1,1,hidden_size)
-		x = self.dropout(self.word_embedding(inputs)).view(-1, 1, self.hidden_size)# get (seq, 1, hidden_size)
-		out, (h_n, c_n) = self.lstm(x)
-		return out, (h_n, c_n)
+	def forward(self, inputs, c):
+		# without SOS, EOS
+		# input_seq = self.word_embedding(inputs[1:-1].to(device)).view(-1, 1, self.hidden_size)
+		input_seq = self.word_embedding(inputs.to(device)).view(-1, 1, self.hidden_size)
+		c = self.condition(c) #torch.Size([1, 1, 8])
+		# hidden = torch.cat((self.initHidden(), c), dim=2) # torch.Size([1, 1, 256])
+		hidden = torch.rand(1, 1, self.hidden_size-self.condition_size ,device=device)
+		hidden = torch.cat((hidden, c), dim=2)
+		out, (h_n, c_n) = self.lstm(input_seq,(hidden,self.initCell()))
+		mean = self.mean(h_n) # Latent torch.Size([1, 1, 32])
+		logvar = self.logvar(h_n) # Latent torch.Size([1, 1, 32])
+		z = (torch.randn(1,1,32).to(device)) * torch.exp(logvar/2) + mean # Latent torch.Size([1, 1, 32])
+		return z, mean, logvar # z:latent
 
 	def initHidden(self):
-		return torch.zeros(1, 1, self.hidden_size - self.condition_size,device=device)
+		return torch.randn(1, 1, self.hidden_size - self.condition_size,device=device)
+
+	def initCell(self):
+		return torch.zeros(1, 1, self.hidden_size,device=device)
 
 	def condition(self, c):
 		c = torch.LongTensor([c]).to(device)
 		return self.condition_embedding(c).view(1,1,-1)
 
-	def sample_z(self):
-		return torch.normal(
-			torch.FloatTensor([0]*self.latent_size),
-			torch.FloatTensor([1]*self.latent_size)
-		).to(device)
+
+
+	# def sample_z(self):
+	# 	return torch.normal(
+	# 		torch.FloatTensor([0]*self.latent_size),
+	# 		torch.FloatTensor([1]*self.latent_size)
+	# 	).to(device)
 
 #Decoder
 class DecoderRNN(nn.Module):
@@ -145,224 +154,279 @@ class DecoderRNN(nn.Module):
 		self.word_size = word_size
 		self.latent_to_hidden = nn.Linear(latent_size+condition_size, hidden_size)
 		self.word_embedding = nn.Embedding(word_size, hidden_size)
-		self.lstm = nn.LSTM(hidden_size, hidden_size)
+		self.condition_embedding = nn.Embedding(num_condition, condition_size)
+		self.lstm = nn.LSTM(input_size=hidden_size,hidden_size=hidden_size)
 		self.out = nn.Linear(hidden_size, word_size)
-		self.dropout = nn.Dropout()
+		self.out = nn.Linear(hidden_size, word_size)
 		self.softmax = nn.LogSoftmax(dim=1)
+		print('DecoderRNN init done')
 
 	def initHidden(self, z, c):
 		latent = torch.cat((z, c), dim=2)
 		return self.latent_to_hidden(latent)
 
+	def initCell(self):
+		return torch.zeros(1, 1, self.hidden_size,device=device)
 
-	def forward(self, x):
-		output = self.dropout(self.word_embedding(x)).view(1, 1, -1)
-		output, (h_n, c_n) = self.lstm(output)
-		output = self.out(output).view(-1, self.word_size)# get (1, word_size)
-		output = self.softmax(output)
-		return output, (h_n, c_n)
+	# def forward(self, z, c, inputs):
+	def forward(self, input_seq, hidden, cell):
+		# z= torch.Size([1, 1, 32])
+		# c = self.condition(c) #torch.Size([1, 1, 8])
+		# hidden = self.initHidden(z, c) # torch.Size([1, 1, 256])
+		# input_seq: torch.Size([N, 1, 256])
+		# hidden = torch.rand(1, 1, self.hidden_size-self.condition_size ,device=device)
+		# hidden = torch.cat((hidden, c), dim=2)
+		# input_seq = self.word_embedding(inputs.to(device)).view(-1, 1, self.hidden_size)
+		# input_seq = F.relu(input_seq)
+		out, (h_n, c_n) = self.lstm(input_seq, (hidden, cell) )
+		# out, (h_n, c_n) = self.lstm(input_seq, (self.initHidden(z,c),self.initHidden(z,c)) )
+		# output = self.out(out).view(-1, self.word_size)
+		output = self.softmax(self.out(out[0]))
+		return output, out, (h_n, c_n) # output-> prob. distrubution ; out -> latant
 
-
-def use_decoder(decoder,h_n, use_teacher_forcing=False):
-	sos_token = train_dataset.chardict.word2index['SOS'] # sos_token = 26
-	eos_token = train_dataset.chardict.word2index['EOS'] # eos_token = 27
-
-	outputs = []
-	decoder_h_n = []
-	maxlen = h_n[1:].size(0)
-	# print(maxlen)
-	x = torch.LongTensor([sos_token]).to(device)
-	for i in range(maxlen):
-		targets,_,_,_ = train_dataset[idx]
-		output, (h_n, c_n) = decoder(x)
-		outputs.append(output)
-		decoder_h_n.append(h_n)
-		output_onehot = torch.max(torch.softmax(output, dim=1), 1)[1]
-		# meet EOS
-		if output_onehot.item() == eos_token and not use_teacher_forcing: break
-		if use_teacher_forcing:
-			x = targets[i+1:i+2]
-			# print(x)
-		else: x = output_onehot
-
-	if len(outputs) != 0: outputs = torch.cat(outputs, dim=0)
-	else: outputs = torch.FloatTensor([]).view(0, word_size).to(device)
-	return outputs
+	def condition(self, c):
+		c = torch.LongTensor([c]).to(device)
+		return self.condition_embedding(c).view(1,1,-1)
 
 #############################################################################
-def KLD_weight_annealing(epoch):
-	slope = 0.001
-	scope = (1.0 / slope)*2
-	w = (epoch % scope) * slope
-	if w > 1.0: w = 1.0
-	return w
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+train_dataset = wordsDataset()
+test_dataset = wordsDataset(False)
+word_size = train_dataset.chardict.n_words #26+2
+num_condition = len(train_dataset.tenses) # 4 tenses
+hidden_size = 256
+latent_size = 32
+condition_size = 8
+teacher_forcing_ratio = 0.5
+KLD_weight = 0.5
+LR = 0.05
+epochs = 500
+KL_cost_annealing = 'cyclical' # or 'monotonic'
+# KL_cost_annealing = 'monotonic'
 
-def teacher_forcing_ratio(epoch):
-	print('teacher_forcing_ratio')
-	# from 1.0 to 0.0
-	slope = 0.01
-	level = 10
-	w = 1.0 - (slope * (epoch//level))
-	if w <= 0.0: w = 0.0
-	return w
+encoder = EncoderRNN(word_size, hidden_size, latent_size, num_condition, condition_size).to(device)
+decoder = DecoderRNN(word_size, hidden_size, latent_size, condition_size).to(device)
+assert encoder.hidden_size == decoder.hidden_size, \
+	"Hidden dimensions of encoder and decoder must be equal!"
 
-def KL_loss(hidden_size, latent_size, h_n):
-	mean = nn.Linear(hidden_size, latent_size).to(device)
-	logvar = nn.Linear(hidden_size, latent_size).to(device)
-	m = mean(h_n) # param mu: mean in VAE
-	logvar = logvar(h_n) # param logvar: logvariance in VAE
+encoder_optimizer = optim.SGD(encoder.parameters(), lr=LR)
+decoder_optimizer = optim.SGD(decoder.parameters(), lr=LR)
+criterion = nn.CrossEntropyLoss()
+###############################################################################
+
+
+def use_decoder(z, c, inputs, use_teacher_forcing):
+	sos_token = train_dataset.chardict.word2index['SOS'] # sos_token = 26
+	eos_token = train_dataset.chardict.word2index['EOS'] # eos_token = 27
+	outputs = []
+	# decoder_h_n = []
+	if not inputs == None:
+		maxlen = inputs.size(0)
+	else :
+		maxlen = 16
+
+	de_input = torch.LongTensor([sos_token]).to(device)
+	de_input_seq = decoder.word_embedding(de_input.to(device)).view(-1, 1, decoder.hidden_size)
+	c = decoder.condition(c)
+	latent = torch.cat((z, c), dim=2)
+	de_hidden = decoder.latent_to_hidden(latent)
+	de_cell = decoder.initCell()
+	for i in range(0,maxlen-1):
+		# de_input = de_input.detach() #???
+		# out, (h_n, c_n) = decoder(z, c, x)
+		output, out, (h_n, c_n) = decoder(de_input_seq, de_hidden, de_cell )
+		out_onehot = torch.max(torch.softmax(output, dim=1), 1)[1]
+		outputs.append(output)
+		if out_onehot.item() == eos_token and not use_teacher_forcing: break
+		if use_teacher_forcing:
+			# x = inputs[i+1:i+2]
+			de_input = inputs[i+1:i+2]
+			de_input_seq = decoder.word_embedding(de_input.to(device)).view(-1, 1, decoder.hidden_size)
+		else:
+			# x = out_onehot
+			# de_input = out_onehot
+			de_input_seq = out
+		de_hidden = h_n
+		de_cell = c_n
+	# str = train_dataset.chardict.stringFromLongtensor(outputs, show_token=True)
+	# print(str)
+	if len(outputs) != 0:
+		outputs = torch.cat(outputs, dim=0)
+	else:
+		outputs = torch.FloatTensor([]).view(0, word_size).to(device)
+
+	return outputs
+
+def KL_loss(m, logvar):
 	return torch.sum(0.5 * (-logvar + (m**2) + torch.exp(logvar) - 1))
 
-def generate_word(encoder, decoder, z, condition, maxlen=20):
-	#generate_word(encoder, decoder, noise, i)
-	encoder.eval()
-	decoder.eval()
-	outputs = use_decoder(decoder, z)
-	return torch.max(torch.softmax(outputs, dim=1), 1)[1]
-
-def compute_bleu(output, reference):
-	cc = SmoothingFunction()
-	return sentence_bleu(
-		[reference], output,
-		weights=(0.25, 0.25, 0.25, 0.25),smoothing_function=cc.method1
-	)
 
 def evaluation(encoder, decoder, dataset,show=True):
-	encoder.eval()
-	decoder.eval()
+	# encoder.eval()
+	# decoder.eval()
+	# with torch.no_grad():
 	blue_score = []
 	for idx in range(len(dataset)):
 		data = dataset[idx]
 		if dataset.train:
-			inputs, input_condition = data
+			inputs, c = data # inputs-> word(tensor([26,  0,  1,  0, 13,  3, 14, 13, 27])) ,
+							 # c-> tense conversion (0)
 			targets = inputs
-			target_condition = input_condition
+			target_condition = c
 		else:
-			inputs, input_condition, targets, target_condition = data
+			inputs, c, targets, target_condition = data
 
-		# input no sos and eos
-		out, (h_n, c_n) = encoder(inputs[1:-1].to(device), encoder.initHidden(), c)
+		z, mean, logvar = encoder(targets, target_condition)
+		outputs = use_decoder(z, target_condition, targets, use_teacher_forcing=False)
 
-		#######decode_inference
-		outputs = use_decoder(decoder, inputs, use_teacher_forcing=False)
-		print(outputs)
-		outputs_onehot = torch.max(torch.softmax(outputs, dim=1), 1)[1] # show output by string
+		# show output by string
+		outputs_onehot = torch.max(torch.softmax(outputs, dim=1), 1)[1]
 		inputs_str = train_dataset.chardict.stringFromLongtensor(inputs, check_end=True)
 		targets_str = train_dataset.chardict.stringFromLongtensor(targets, check_end=True)
-		outputs_str = train_dataset.chardict.stringFromLongtensor(outputs, check_end=True)
+		outputs_str = train_dataset.chardict.stringFromLongtensor(outputs_onehot, check_end=True)
 
 		if show:
 			print('input:',inputs_str)
 			print('target:',targets_str)
 			print('prediction:',outputs_str)
 			print('')
-
 		blue_score.append( compute_bleu(outputs_str, targets_str) )
-
 	if show: print('BLEU-4 score : {}'.format(sum(blue_score) / len(blue_score)))
-	# if show:
-	# 	noise = encoder.sample_z()
-	# 	for i in range(len(train_dataset.tenses)):
-	# 		outputs = generate_word(encoder, decoder, noise, i)
-	# 		output_str = train_dataset.chardict.stringFromLongtensor(outputs)
-	# 		print(output_str,end=' ')
-	# 	print('')
-	return blue_score
 
-def weights_init_uniform(m):
-    classname = m.__class__.__name__
-    # for every Linear layer in a model..
-    if classname.find('Linear') != -1:
-        # apply a uniform distribution to the weights and a bias=0
-        m.weight.data.uniform_(-1, 1)
-        m.bias.data.fill_(0)
+	words_list = []
+	for j in range(100):
+		words = []
+		# noise = ((encoder.sample_z()).unsqueeze(0)).unsqueeze(0) # torch.Size([1, 1, 32])
+		noise = torch.randn(1,1,32).to(device)
+		for i in range(len(train_dataset.tenses)):
+			outputs = use_decoder(noise, int(i), None, False)
+			outputs_onehot = torch.max(torch.softmax(outputs, dim=1), 1)[1]
+			output_str = train_dataset.chardict.stringFromLongtensor(outputs_onehot)
+			words.append(output_str)
+		words_list.append(words)
+	gaussian_score = get_gaussian_score(words)
+	if show:
+		print('generate word: ')
+		for i in range(len(words_list)): print(words_list[i])
+		print(' gaussian_score:',get_gaussian_score(words_list))
+
+	return sum(blue_score) / len(blue_score) , gaussian_score
+
+
+
+def compute_bleu(output, reference):
+	"""
+	:param output: The word generated by your model
+	:param reference: The target word
+	:return:
+	"""
+	cc = SmoothingFunction()
+	if len(reference) == 3:
+		weights = (0.33,0.33,0.33)
+	else:
+		weights = (0.25,0.25,0.25,0.25)
+	return sentence_bleu([reference], output,weights=weights,smoothing_function=cc.method1)
+
+def get_gaussian_score(words):
+	"""
+	:param words:
+	words = [['consult', 'consults', 'consulting', 'consulted'],
+			 ['plead', 'pleads', 'pleading', 'pleaded'],
+			 ['explain', 'explains', 'explaining', 'explained'],
+			 ['amuse', 'amuses', 'amusing', 'amused'], ....]
+	"""
+	words_list = []
+	score = 0
+	yourpath = os.path.join('dataset','train.txt')  #should be your directory of train.txt
+	with open(yourpath,'r') as fp:
+		for line in fp:
+			word = line.split(' ')
+			word[3] = word[3].strip('\n')
+			words_list.extend([word])
+		for t in words:
+			for i in words_list:
+				if t == i:
+					score += 1
+	return score/len(words)
+
+
 
 if __name__=='__main__':
-	print('--- start ---')
-	# config
-	word_size = train_dataset.chardict.n_words
-	num_condition = len(train_dataset.tenses)
-	hidden_size = 256
-	latent_size = 32
-	condition_size = 8
-	teacher_forcing_ratio = 0.5
-	KLD_weight = 0.5
-	LR = 0.05
-	epoch_size = 1000
+	#plot list
+	tfr_list, kld_w_list, LR_list = [], [], []
+	crossentropy_list, KL_loss_list, bleu_list, gaussian_list = [], [], [], []
+	for epoch in range(1, epochs+1):
 
-	encoder = EncoderRNN(word_size, hidden_size, latent_size, num_condition, condition_size).to(device)
-	decoder = DecoderRNN(word_size, hidden_size, latent_size, condition_size).to(device)
-	assert encoder.hidden_size == decoder.hidden_size, \
-        "Hidden dimensions of encoder and decoder must be equal!"
-	encoder.apply(weights_init_uniform)
-	decoder.apply(weights_init_uniform)
+		if KL_cost_annealing == 'cyclical':
+			tmp = epoch%100
+			if tmp > 50 : kld_w = 1
+			else: kld_w = tmp*0.02
+		if KL_cost_annealing == 'monotonic':
+			if epoch < epochs*0.5 : kld_w = 1
+			else : kld_w = 1-(epoch-epochs*0.5)/(epochs*0.5)
 
-	encoder_optimizer = optim.SGD(encoder.parameters(), lr=LR)
-	decoder_optimizer = optim.SGD(decoder.parameters(), lr=LR)
-	criterion = nn.CrossEntropyLoss(reduction='sum')
+		if epoch < epochs*0.5 : tfr = 0.5
+		else :
+			tfr = max(0.5-0.5*(1/epochs)*epoch, 0)
 
-
-
-	Crossentropyloss, KLloss, BLEU, TFR, KLD = [], [], [], [], [] # for plot
-	for epoch in range(1,epoch_size+1):
-		encoder.train()
-		decoder.train()
 		for idx in range(len(train_dataset)):
-			# if idx%50==0 :print(idx)
-			Crossentropyloss_list, KLloss_list = [], []
-
-
+			encoder.train()
+			decoder.train()
+			crossentropy_list_tmp, KL_loss_list_tmp = [], []
 			data = train_dataset[idx]
-			inputs, c = data #inputs-> word , c->tense conversion
+			inputs, c = data # inputs-> word(tensor([26,  0,  1,  0, 13,  3, 14, 13, 27])) ,
+							 # c-> tense conversion (0)
 
-			encoder_optimizer.zero_grad()
+
 			decoder_optimizer.zero_grad()
+			encoder_optimizer.zero_grad()
 
-			# input no sos and eos
-			out, (h_n, c_n) = encoder(inputs[1:-1].to(device), encoder.initHidden(), c)
-			kld_loss = KL_loss( hidden_size, latent_size, h_n)
-			KLloss_list.append(kld_loss.item())
+			z, mean, logvar = encoder(inputs, c)
+			use = True if random.random() < tfr else False
+			outputs = use_decoder(z, c, inputs, use_teacher_forcing=use) #inputs = ground truth
 
-			if callable(teacher_forcing_ratio): tfr = teacher_forcing_ratio(epoch)
-			else: tfr = teacher_forcing_ratio
-			use_tf = True if random.random() < 0.5 else False
-			outputs = use_decoder(decoder, h_n, use_teacher_forcing=True)
-			print(outputs)
+			# outputs_onehot = torch.max(torch.softmax(outputs, dim=1), 1)[1]
+			# inputs_str = train_dataset.chardict.stringFromLongtensor(inputs, check_end=True)
+			# outputs_str = train_dataset.chardict.stringFromLongtensor(outputs_onehot, check_end=True)
+			# print('inputs_str: ',inputs_str,'  outputs_str: ',outputs_str)
 
-			output_length = outputs.size(0) # target no sos
-			crossentropyloss = criterion(outputs, inputs[1:1+output_length].to(device))
-			Crossentropyloss_list.append(crossentropyloss.item())
-			# print(crossentropyloss.item())
 
-			if callable(KLD_weight_annealing): kld_w = KLD_weight_annealing(epoch)
-			else: kld_w = KLD_weight
+			output_length = outputs.size(0)
+			# CrossEntropyLoss Input: (N, C)(N,C) where C = number of classes
+			# CrossEntropyLoss Target: (N)
+			entropy_loss = criterion(outputs, inputs[0:output_length].to(device))
 
-			(crossentropyloss + (kld_w * kld_loss)).backward()
+			kld_loss = KL_loss(mean, logvar)
+			(entropy_loss + (kld_w * kld_loss)).backward()
 			encoder_optimizer.step()
 			decoder_optimizer.step()
+			crossentropy_list_tmp.append(entropy_loss.item())
+			KL_loss_list_tmp.append(kld_loss.item())
 
-		show_flag = True if epoch%50==0 else False
-		evaluation
-		blue_score = evaluation(encoder, decoder, test_dataset, show=True)
-		BLEU.append(np.mean(blue_score))
-
-
-		Crossentropyloss.append(np.mean(Crossentropyloss_list))
-		KLloss.append(np.mean(KLloss_list))
-		TFR.append(tfr)
-		KLD.append(kld_w)
-		print('epoch:',epoch,BLEU[-1],Crossentropyloss[-1],KLloss[-1])
+		blue_score, gaussian_score = evaluation(encoder, decoder, test_dataset,show=True)
 
 
+		#plot
+		tfr_list.append(tfr)
+		kld_w_list.append(kld_w)
+		LR_list.append(LR)
+		crossentropy_list.append(sum(crossentropy_list_tmp) / len(crossentropy_list_tmp))
+		KL_loss_list.append(sum(KL_loss_list_tmp) / len(KL_loss_list_tmp))
+		bleu_list.append(blue_score)
+		gaussian_list.append(gaussian_score)
+		print('epoch= ',epoch, 'blue_score=',blue_score, 'gaussian_score=',gaussian_score, 'crossentropy=',crossentropy_list[-1], 'KL_loss=',KL_loss_list[-1])
+		print('all loss=', (crossentropy_list[-1] + (kld_w * KL_loss_list[-1])))
 
-	# fig = plt.figure()
-	# TFRrrrr = plt.plot(TFR,color='c')
-	# KLDdddd = plt.plot(KLD,color='m')
-	# bleeeu = plt.plot(BLEU,color='r')
-	# klloss = plt.plot(KLloss,color='b')
-	# ax = plt.gca().twinx()
-	# closs = ax.plot(Crossentropyloss,color='g')
-	# plt.xlabel('epoch')
-	# # ax.legend([bleeeu,klloss,closs],[BLEU,KLloss,Crossentropyloss])
-	# plt.show()
-	# fig.savefig('BLEU'+'Crossentropyloss'+'KLloss'+'.png')
+
+
+	fig = plt.figure()
+	plt.plot(tfr_list,color='b')
+	plt.plot(kld_w_list,color='g')
+	plt.plot(LR_list,color='r')
+	plt.plot(crossentropy_list,color='c')
+	plt.plot(KL_loss_list,color='m')
+	plt.plot(bleu_list,color='y')
+	plt.plot(gaussian_list,color='k')
+	plt.xlabel('epoch')
+	plt.show()
+	fig.savefig('BLEU'+'Crossentropyloss'+'KLloss'+'.png')
