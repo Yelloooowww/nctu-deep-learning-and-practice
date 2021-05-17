@@ -21,7 +21,6 @@ import numpy as np
 import pandas as pd
 from nltk.translate.bleu_score import SmoothingFunction, sentence_bleu
 import logging
-from torch.optim.lr_scheduler import StepLR, MultiStepLR
 
 
 
@@ -164,29 +163,7 @@ class DecoderRNN(nn.Module):
 		return self.condition_embedding(c).view(1,1,-1)
 
 #############################################################################
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-train_dataset = wordsDataset(shuffle=True)
-test_dataset = wordsDataset(False,shuffle=True)
-word_size = train_dataset.chardict.n_words #26+2
-num_condition = len(train_dataset.tenses) # 4 tenses
-hidden_size = 256
-latent_size = 32
-condition_size = 8
-teacher_forcing_ratio = 0.5
-KLD_weight = 0.5
-LR = 0.0025
-epochs = 200
-KL_cost_annealing = 'cyclical' # or 'monotonic'
 
-encoder = EncoderRNN(word_size, hidden_size, latent_size, num_condition, condition_size).to(device)
-decoder = DecoderRNN(word_size, hidden_size, latent_size, condition_size).to(device)
-assert encoder.hidden_size == decoder.hidden_size, \
-	"Hidden dimensions of encoder and decoder must be equal!"
-
-encoder_optimizer = optim.SGD(encoder.parameters(), lr=0.13)
-decoder_optimizer = optim.SGD(decoder.parameters(), lr=0.05)
-criterion = nn.CrossEntropyLoss()
-# criterion = nn.NLLLoss()
 ###############################################################################
 
 
@@ -344,130 +321,33 @@ def get_kl_weight(epoch,epochs,kl_annealing_type,time):
 
 
 if __name__=='__main__':
-	#
-	encoder.load_state_dict(torch.load('models/cyclical_best_encoder_epoch_185_bleu_0.5403583991424021.pt'))
-	decoder.load_state_dict(torch.load('models/cyclical_best_decoder_epoch_185_bleu_0.5403583991424021.pt'))
-	#plot list
-	tfr_list, kld_w_list, LR_list = [], [], []
-	all_loss, crossentropy_list, KL_loss_list, bleu_list, gaussian_list = [], [], [], [], []
+	device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-	best_bleu = 0
-	# NEW
-	# scaler = torch.cuda.amp.GradScaler()
-	encoder_scheduler = StepLR(encoder_optimizer, step_size=1, gamma=0.99)
-	idx_list = [idx for idx in range(len(train_dataset))]
-	for epoch in range(1, epochs+1):
+	train_dataset = wordsDataset(shuffle=True)
+	test_dataset = wordsDataset(False,shuffle=True)
+	word_size = train_dataset.chardict.n_words #26+2
+	num_condition = len(train_dataset.tenses) # 4 tenses
+	hidden_size = 256
+	latent_size = 32
+	condition_size = 8
+	teacher_forcing_ratio = 0.5
+	KLD_weight = 0.5
+	LR = 0.007
+	epochs = 1000
+	KL_cost_annealing = 'cyclical' # or 'monotonic'
 
-		if KL_cost_annealing == 'cyclical':
-			tmp = epoch%30
-			if tmp < 20 : kld_w = 0.001 * tmp
-			else: kld_w = (tmp-20)*0.02 + 0.02
+	encoder = EncoderRNN(word_size, hidden_size, latent_size, num_condition, condition_size).to(device)
+	decoder = DecoderRNN(word_size, hidden_size, latent_size, condition_size).to(device)
+	assert encoder.hidden_size == decoder.hidden_size, \
+		"Hidden dimensions of encoder and decoder must be equal!"
+	encoder.load_state_dict(torch.load('models/cyclical_best_encoder_epoch_153_bleu_0.9489649071223191.pt'))
+	decoder.load_state_dict(torch.load('models/cyclical_best_decoder_epoch_153_bleu_0.9489649071223191.pt'))
+	criterion = nn.CrossEntropyLoss()
 
-		if KL_cost_annealing == 'monotonic':
-			if epoch < epochs*0.5 : kld_w = 1
-			else : kld_w = 1-(epoch-epochs*0.5)/(epochs*0.5)
-		# kld_w = get_kl_weight(epoch,epochs,'cycle',1)
-
-
-		# tfr = 1.-(1./epochs)*epoch if epoch % 2 ==0  else 0
-		tfr = 1.-(1./epochs)*epoch
-		# if epoch < epochs*0.4 :
-		# 	tfr = 1.-0.4*(1./epochs)*epoch
-		# else :
-		# 	tfr = max(0.9-(1./epochs)*epoch, 0)
-
-		encoder.train()
-		decoder.train()
-
-		random.shuffle(idx_list)
-		for idx in idx_list:
-		# for idx in range(len(train_dataset)):
-			# idx = random.randint(0, len(train_dataset)-1)
-
-			crossentropy_list_tmp, KL_loss_list_tmp = [], []
-			data = train_dataset[idx]
-			inputs, c = data # inputs-> word(tensor([26,  0,  1,  0, 13,  3, 14, 13, 27])) ,
-							 # c-> tense conversion (0)
-
-			# # NEW
-			# with torch.cuda.amp.autocast():
-			decoder_optimizer.zero_grad()
-			encoder_optimizer.zero_grad()
-			_, _, _, z, mean, logvar = encoder(inputs, c)
-			use = True if random.random() < tfr else False
-			outputs, entropy_loss = use_decoder(z, c, inputs, use_teacher_forcing=use) #inputs = ground truth
-			#
-			# outputs_onehot = torch.max(torch.softmax(outputs, dim=1), 1)[1]
-			# inputs_str = train_dataset.chardict.stringFromLongtensor(inputs, check_end=True)
-			# outputs_str = train_dataset.chardict.stringFromLongtensor(outputs_onehot, check_end=True)
-			# print('inputs_str: ',inputs_str,'  outputs_str: ',outputs_str)
-
-
-			output_length = outputs.size(0)
-			# CrossEntropyLoss Input: (N, C)(N,C) where C = number of classes
-			# CrossEntropyLoss Target: (N)
-			# entropy_loss = criterion(outputs, inputs[1:1+output_length].to(device))
-
-			kld_loss = KL_loss(mean, logvar)
-			# # NEW
-			# scaler.scale( (entropy_loss + (kld_w * kld_loss)) ).backward()
-			(entropy_loss + (kld_w * kld_loss)).backward()
-			# NEW
-			# scaler.step(encoder_optimizer)
-			# scaler.step(decoder_optimizer)
-			# scaler.update()
-
-
-			encoder_optimizer.step()
-			decoder_optimizer.step()
-			crossentropy_list_tmp.append(entropy_loss.item())
-			KL_loss_list_tmp.append(kld_loss.item())
-
-		encoder.eval()
-		decoder.eval()
-		encoder_scheduler.step()
-		blue_score, gaussian_score = evaluation(encoder, decoder, test_dataset,show=True)
-
-
-		#plot
-		tfr_list.append(tfr)
-		kld_w_list.append(kld_w)
-		LR_list.append(LR)
-		crossentropy_list.append(sum(crossentropy_list_tmp) / len(crossentropy_list_tmp))
-		KL_loss_list.append(sum(KL_loss_list_tmp) / len(KL_loss_list_tmp))
-		bleu_list.append(blue_score)
-		gaussian_list.append(gaussian_score)
-		all_loss.append( (crossentropy_list[-1] + (kld_w * KL_loss_list[-1])) )
-		print('epoch= ',epoch, 'blue_score=',blue_score, 'gaussian_score=',gaussian_score, 'crossentropy=',crossentropy_list[-1], 'KL_loss=',KL_loss_list[-1])
-		print('all loss=', all_loss[-1])
-
-		# save
-		if blue_score > best_bleu:
-			best_encoder_wts = copy.deepcopy(encoder.state_dict())
-			torch.save(best_encoder_wts,f'models/{KL_cost_annealing}_best_encoder_epoch_{epoch}_bleu_{blue_score}.pt')
-			best_decoder_wts = copy.deepcopy(decoder.state_dict())
-			torch.save(best_decoder_wts,f'models/{KL_cost_annealing}_best_decoder_epoch_{epoch}_bleu_{blue_score}.pt')
-			best_bleu = blue_score
-
-
-
-
-	fig = plt.figure()
-	plt.plot(tfr_list,color='b')
-	plt.plot(kld_w_list,color='g')
-	plt.plot(LR_list,color='r')
-	plt.plot(bleu_list,color='y')
-	plt.plot(gaussian_list,color='k')
-	plt.legend('tfr','KL weight','LR','BLEU-4','Guassian')
-	plt.xlabel('epoch')
-	plt.show()
-	fig.savefig(f'{KL_cost_annealing}tfr_KLweight_LR_BLEU-4_Guassian.png')
-
-	fig = plt.figure()
-	plt.plot(crossentropy_list,color='c')
-	plt.plot(KL_loss_list,color='m')
-	plt.plot(all_loss,color='lime')
-	plt.xlabel('epoch')
-	plt.legend('cross entropy loss','KL loss','total loss')
-	plt.show()
-	fig.savefig(f'{KL_cost_annealing}loss.png')
+	encoder.eval()
+	decoder.eval()
+	with torch.no_grad():
+		for i in range(100):
+			blue_score, gaussian_score = evaluation(encoder, decoder, test_dataset,show=True)
+			print('blue_score=',blue_score,' gaussian_score=',gaussian_score)
+			time.sleep(0.5)
