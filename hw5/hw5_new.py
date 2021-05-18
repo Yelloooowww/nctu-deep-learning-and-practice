@@ -156,7 +156,6 @@ class DecoderRNN(nn.Module):
 	def forward(self, input_seq, hidden, cell):
 		out, (h_n, c_n) = self.lstm(input_seq, (hidden, cell) )
 		output = self.out(out[0])
-		# output = self.softmax(output)
 		return output.to(device), out, (h_n, c_n) # output-> prob. distrubution ; out -> latant
 
 	def condition(self, c):
@@ -172,10 +171,7 @@ num_condition = len(train_dataset.tenses) # 4 tenses
 hidden_size = 256
 latent_size = 32
 condition_size = 8
-teacher_forcing_ratio = 0.5
-KLD_weight = 0.5
-LR = 0.0025
-epochs = 200
+epochs = 400
 KL_cost_annealing = 'cyclical' # or 'monotonic'
 
 encoder = EncoderRNN(word_size, hidden_size, latent_size, num_condition, condition_size).to(device)
@@ -183,10 +179,9 @@ decoder = DecoderRNN(word_size, hidden_size, latent_size, condition_size).to(dev
 assert encoder.hidden_size == decoder.hidden_size, \
 	"Hidden dimensions of encoder and decoder must be equal!"
 
-encoder_optimizer = optim.SGD(encoder.parameters(), lr=0.13)
+encoder_optimizer = optim.SGD(encoder.parameters(), lr=1)
 decoder_optimizer = optim.SGD(decoder.parameters(), lr=0.05)
 criterion = nn.CrossEntropyLoss()
-# criterion = nn.NLLLoss()
 ###############################################################################
 
 
@@ -229,10 +224,8 @@ def use_decoder(z, c, inputs, use_teacher_forcing):
 		outputs = torch.FloatTensor([]).view(0, word_size).to(device)
 
 	return outputs, entropy_loss/(maxlen-1)
-	# return outputs, entropy_loss
 
 def KL_loss(m, logvar):
-	# return -0.5 * torch.sum(1 + logvar - m**2 - logvar.exp())
 	return 0.5 * torch.sum(torch.exp(logvar) + m**2 - 1. - logvar)
 
 
@@ -296,12 +289,10 @@ def compute_bleu(output, reference):
 
 """============================================================================
 example input of Gaussian_score
-
 words = [['consult', 'consults', 'consulting', 'consulted'],
 ['plead', 'pleads', 'pleading', 'pleaded'],
 ['explain', 'explains', 'explaining', 'explained'],
 ['amuse', 'amuses', 'amusing', 'amused'], ....]
-
 the order should be : simple present, third person, present progressive, past
 ============================================================================"""
 
@@ -320,40 +311,14 @@ def Gaussian_score(words):
 					score += 1
 	return score/len(words)
 
-def sigmoid(x):
-	return 1 / (1 + np.exp(-x))
-def get_kl_weight(epoch,epochs,kl_annealing_type,time):
-	"""
-	:param epoch: i-th epoch
-	:param kl_annealing_type: 'monotonic' or 'cycle'
-	:param time:
-		if('monotonic'): # of epoch for kl_weight from 0.0 to reach 1.0
-		if('cycle'):     # of cycle
-	"""
-	assert kl_annealing_type=='monotonic' or kl_annealing_type=='cycle','kl_annealing_type not exist!'
-
-	if kl_annealing_type == 'monotonic':
-		return (1./(time-1))*(epoch-1) if epoch<time else 1.
-
-	else: #cycle
-		period = epochs//time
-		epoch %= period
-		KL_weight = sigmoid((epoch - period // 2) / (period // 10)) / 2
-		return KL_weight
 
 
-
-if __name__=='__main__':
-	#
-	encoder.load_state_dict(torch.load('models/cyclical_best_encoder_epoch_185_bleu_0.5403583991424021.pt'))
-	decoder.load_state_dict(torch.load('models/cyclical_best_decoder_epoch_185_bleu_0.5403583991424021.pt'))
+if __name__ == '__main__':
 	#plot list
 	tfr_list, kld_w_list, LR_list = [], [], []
 	all_loss, crossentropy_list, KL_loss_list, bleu_list, gaussian_list = [], [], [], [], []
 
 	best_bleu = 0
-	# NEW
-	# scaler = torch.cuda.amp.GradScaler()
 	encoder_scheduler = StepLR(encoder_optimizer, step_size=1, gamma=0.99)
 	idx_list = [idx for idx in range(len(train_dataset))]
 	for epoch in range(1, epochs+1):
@@ -362,35 +327,22 @@ if __name__=='__main__':
 			tmp = epoch%30
 			if tmp < 20 : kld_w = 0.001 * tmp
 			else: kld_w = (tmp-20)*0.02 + 0.02
-
 		if KL_cost_annealing == 'monotonic':
-			if epoch < epochs*0.5 : kld_w = 1
-			else : kld_w = 1-(epoch-epochs*0.5)/(epochs*0.5)
-		# kld_w = get_kl_weight(epoch,epochs,'cycle',1)
+			kld_w = 1
 
-
-		# tfr = 1.-(1./epochs)*epoch if epoch % 2 ==0  else 0
-		tfr = 1.-(1./epochs)*epoch
-		# if epoch < epochs*0.4 :
-		# 	tfr = 1.-0.4*(1./epochs)*epoch
-		# else :
-		# 	tfr = max(0.9-(1./epochs)*epoch, 0)
+		tfr = 1.-(1./200)*(epoch%200)
 
 		encoder.train()
 		decoder.train()
 
 		random.shuffle(idx_list)
 		for idx in idx_list:
-		# for idx in range(len(train_dataset)):
-			# idx = random.randint(0, len(train_dataset)-1)
 
 			crossentropy_list_tmp, KL_loss_list_tmp = [], []
 			data = train_dataset[idx]
 			inputs, c = data # inputs-> word(tensor([26,  0,  1,  0, 13,  3, 14, 13, 27])) ,
 							 # c-> tense conversion (0)
 
-			# # NEW
-			# with torch.cuda.amp.autocast():
 			decoder_optimizer.zero_grad()
 			encoder_optimizer.zero_grad()
 			_, _, _, z, mean, logvar = encoder(inputs, c)
@@ -407,17 +359,8 @@ if __name__=='__main__':
 			# CrossEntropyLoss Input: (N, C)(N,C) where C = number of classes
 			# CrossEntropyLoss Target: (N)
 			# entropy_loss = criterion(outputs, inputs[1:1+output_length].to(device))
-
 			kld_loss = KL_loss(mean, logvar)
-			# # NEW
-			# scaler.scale( (entropy_loss + (kld_w * kld_loss)) ).backward()
 			(entropy_loss + (kld_w * kld_loss)).backward()
-			# NEW
-			# scaler.step(encoder_optimizer)
-			# scaler.step(decoder_optimizer)
-			# scaler.update()
-
-
 			encoder_optimizer.step()
 			decoder_optimizer.step()
 			crossentropy_list_tmp.append(entropy_loss.item())
@@ -432,7 +375,6 @@ if __name__=='__main__':
 		#plot
 		tfr_list.append(tfr)
 		kld_w_list.append(kld_w)
-		LR_list.append(LR)
 		crossentropy_list.append(sum(crossentropy_list_tmp) / len(crossentropy_list_tmp))
 		KL_loss_list.append(sum(KL_loss_list_tmp) / len(KL_loss_list_tmp))
 		bleu_list.append(blue_score)
@@ -452,15 +394,15 @@ if __name__=='__main__':
 
 
 
+
 	fig = plt.figure()
 	plt.plot(tfr_list,color='b')
 	plt.plot(kld_w_list,color='g')
-	plt.plot(LR_list,color='r')
 	plt.plot(bleu_list,color='y')
-	plt.plot(gaussian_list,color='k')
-	plt.legend('tfr','KL weight','LR','BLEU-4','Guassian')
+	plt.plot(gaussian_list,color='r')
+	plt.legend(['tfr','KL weight','BLEU-4','Guassian'])
 	plt.xlabel('epoch')
-	plt.show()
+	# plt.show()
 	fig.savefig(f'{KL_cost_annealing}tfr_KLweight_LR_BLEU-4_Guassian.png')
 
 	fig = plt.figure()
@@ -468,6 +410,6 @@ if __name__=='__main__':
 	plt.plot(KL_loss_list,color='m')
 	plt.plot(all_loss,color='lime')
 	plt.xlabel('epoch')
-	plt.legend('cross entropy loss','KL loss','total loss')
-	plt.show()
+	plt.legend(['cross entropy loss','KL loss','total loss'])
+	# plt.show()
 	fig.savefig(f'{KL_cost_annealing}loss.png')
