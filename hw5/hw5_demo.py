@@ -9,6 +9,7 @@ import os
 import sys
 import math
 import json
+import copy
 import torch
 import torch.nn as nn
 from torch import optim
@@ -19,6 +20,7 @@ import matplotlib.ticker as ticker
 import numpy as np
 import pandas as pd
 from nltk.translate.bleu_score import SmoothingFunction, sentence_bleu
+import logging
 
 
 
@@ -55,7 +57,7 @@ class CharDict:
 		return s
 
 class wordsDataset(Dataset):
-	def __init__(self, train=True):
+	def __init__(self, train=True, shuffle=True):
 		if train: f = 'dataset/train.txt'
 		else: f = 'dataset/test.txt'
 		self.datas = np.loadtxt(f, dtype=np.str)
@@ -75,7 +77,6 @@ class wordsDataset(Dataset):
 				[2, 1],  # pg -> tp
 			])
 
-		# self.tenses = ['simple-present','third-person','present-progressive','simple-past']
 		self.tenses = [0,1,2,3] #['simple-present','third-person','present-progressive','simple-past']
 		self.chardict = CharDict()
 		self.train = train
@@ -111,40 +112,26 @@ class EncoderRNN(nn.Module):
 		self.lstm = nn.LSTM(input_size=hidden_size,hidden_size=hidden_size)
 		self.mean = nn.Linear(hidden_size, latent_size)
 		self.logvar = nn.Linear(hidden_size, latent_size)
-		# self.dropout = nn.Dropout()
 		print('EncoderRNN init done')
 
-	def forward(self, inputs, c):
-		# without SOS, EOS
-		# input_seq = self.word_embedding(inputs[1:-1].to(device)).view(-1, 1, self.hidden_size)
+
+	def forward(self, inputs, c, encoder_in_hidden=None, encoder_in_cell=None):
 		input_seq = self.word_embedding(inputs.to(device)).view(-1, 1, self.hidden_size)
 		c = self.condition(c) #torch.Size([1, 1, 8])
-		# hidden = torch.cat((self.initHidden(), c), dim=2) # torch.Size([1, 1, 256])
-		hidden = torch.rand(1, 1, self.hidden_size-self.condition_size ,device=device)
+		hidden = torch.zeros(1, 1, self.hidden_size-self.condition_size ,device=device)
 		hidden = torch.cat((hidden, c), dim=2)
-		out, (h_n, c_n) = self.lstm(input_seq,(hidden,self.initCell()))
+		cell = torch.zeros(1, 1, self.hidden_size-self.condition_size ,device=device)
+		cell = torch.cat((cell, c), dim=2)
+		out, (h_n, c_n) = self.lstm(input_seq,(hidden,cell))
 		mean = self.mean(h_n) # Latent torch.Size([1, 1, 32])
 		logvar = self.logvar(h_n) # Latent torch.Size([1, 1, 32])
-		z = (torch.randn(1,1,32).to(device)) * torch.exp(logvar/2) + mean # Latent torch.Size([1, 1, 32])
-		return z, mean, logvar # z:latent
+		z = (torch.randn(1,1,self.latent_size).to(device)) * torch.exp(logvar/2) + mean # Latent torch.Size([1, 1, 32])
+		return out, h_n, c_n, z, mean, logvar # z:latent
 
-	def initHidden(self):
-		return torch.randn(1, 1, self.hidden_size - self.condition_size,device=device)
-
-	def initCell(self):
-		return torch.zeros(1, 1, self.hidden_size,device=device)
 
 	def condition(self, c):
 		c = torch.LongTensor([c]).to(device)
 		return self.condition_embedding(c).view(1,1,-1)
-
-
-
-	# def sample_z(self):
-	# 	return torch.normal(
-	# 		torch.FloatTensor([0]*self.latent_size),
-	# 		torch.FloatTensor([1]*self.latent_size)
-	# 	).to(device)
 
 #Decoder
 class DecoderRNN(nn.Module):
@@ -152,74 +139,39 @@ class DecoderRNN(nn.Module):
 		super(DecoderRNN, self).__init__()
 		self.hidden_size = hidden_size
 		self.word_size = word_size
+		self.condition_size = condition_size
 		self.latent_to_hidden = nn.Linear(latent_size+condition_size, hidden_size)
 		self.word_embedding = nn.Embedding(word_size, hidden_size)
 		self.condition_embedding = nn.Embedding(num_condition, condition_size)
 		self.lstm = nn.LSTM(input_size=hidden_size,hidden_size=hidden_size)
 		self.out = nn.Linear(hidden_size, word_size)
-		self.out = nn.Linear(hidden_size, word_size)
 		self.softmax = nn.LogSoftmax(dim=1)
+		self.bn = nn.BatchNorm1d(num_features=word_size)
 		print('DecoderRNN init done')
 
-	def initHidden(self, z, c):
-		latent = torch.cat((z, c), dim=2)
-		return self.latent_to_hidden(latent)
-
 	def initCell(self):
-		return torch.zeros(1, 1, self.hidden_size,device=device)
+		return torch.zeros(1, 1, self.hidden_size - self.condition_size,device=device)
 
-	# def forward(self, z, c, inputs):
 	def forward(self, input_seq, hidden, cell):
-		# z= torch.Size([1, 1, 32])
-		# c = self.condition(c) #torch.Size([1, 1, 8])
-		# hidden = self.initHidden(z, c) # torch.Size([1, 1, 256])
-		# input_seq: torch.Size([N, 1, 256])
-		# hidden = torch.rand(1, 1, self.hidden_size-self.condition_size ,device=device)
-		# hidden = torch.cat((hidden, c), dim=2)
-		# input_seq = self.word_embedding(inputs.to(device)).view(-1, 1, self.hidden_size)
-		# input_seq = F.relu(input_seq)
 		out, (h_n, c_n) = self.lstm(input_seq, (hidden, cell) )
-		# out, (h_n, c_n) = self.lstm(input_seq, (self.initHidden(z,c),self.initHidden(z,c)) )
-		# output = self.out(out).view(-1, self.word_size)
-		output = self.softmax(self.out(out[0]))
-		return output, out, (h_n, c_n) # output-> prob. distrubution ; out -> latant
+		output = self.out(out[0])
+		# output = self.softmax(output)
+		return output.to(device), out, (h_n, c_n) # output-> prob. distrubution ; out -> latant
 
 	def condition(self, c):
 		c = torch.LongTensor([c]).to(device)
 		return self.condition_embedding(c).view(1,1,-1)
 
 #############################################################################
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-train_dataset = wordsDataset()
-test_dataset = wordsDataset(False)
-word_size = train_dataset.chardict.n_words #26+2
-num_condition = len(train_dataset.tenses) # 4 tenses
-hidden_size = 256
-latent_size = 32
-condition_size = 8
-teacher_forcing_ratio = 0.5
-KLD_weight = 0.5
-LR = 0.05
-epochs = 500
-KL_cost_annealing = 'cyclical' # or 'monotonic'
-# KL_cost_annealing = 'monotonic'
 
-encoder = EncoderRNN(word_size, hidden_size, latent_size, num_condition, condition_size).to(device)
-decoder = DecoderRNN(word_size, hidden_size, latent_size, condition_size).to(device)
-assert encoder.hidden_size == decoder.hidden_size, \
-	"Hidden dimensions of encoder and decoder must be equal!"
-
-encoder_optimizer = optim.SGD(encoder.parameters(), lr=LR)
-decoder_optimizer = optim.SGD(decoder.parameters(), lr=LR)
-criterion = nn.CrossEntropyLoss()
 ###############################################################################
 
 
 def use_decoder(z, c, inputs, use_teacher_forcing):
+
 	sos_token = train_dataset.chardict.word2index['SOS'] # sos_token = 26
 	eos_token = train_dataset.chardict.word2index['EOS'] # eos_token = 27
 	outputs = []
-	# decoder_h_n = []
 	if not inputs == None:
 		maxlen = inputs.size(0)
 	else :
@@ -231,40 +183,37 @@ def use_decoder(z, c, inputs, use_teacher_forcing):
 	latent = torch.cat((z, c), dim=2)
 	de_hidden = decoder.latent_to_hidden(latent)
 	de_cell = decoder.initCell()
-	for i in range(0,maxlen-1):
-		# de_input = de_input.detach() #???
-		# out, (h_n, c_n) = decoder(z, c, x)
-		output, out, (h_n, c_n) = decoder(de_input_seq, de_hidden, de_cell )
-		out_onehot = torch.max(torch.softmax(output, dim=1), 1)[1]
+	de_cell = torch.cat((de_cell, c), dim=2)
+
+	entropy_loss = 0
+	for i in range(1,maxlen):
+		output, out, (de_hidden, de_cell) = decoder(de_input_seq, de_hidden, de_cell )
+		out_onehot = torch.max(torch.softmax(output, dim=1), 1)[1] # [1]只返回最大值的每个索引
 		outputs.append(output)
+		if not inputs == None: entropy_loss += criterion(output, torch.tensor([inputs[i]]).to(device))
 		if out_onehot.item() == eos_token and not use_teacher_forcing: break
 		if use_teacher_forcing:
-			# x = inputs[i+1:i+2]
-			de_input = inputs[i+1:i+2]
+			de_input = inputs[i]
 			de_input_seq = decoder.word_embedding(de_input.to(device)).view(-1, 1, decoder.hidden_size)
 		else:
-			# x = out_onehot
-			# de_input = out_onehot
 			de_input_seq = out
-		de_hidden = h_n
-		de_cell = c_n
-	# str = train_dataset.chardict.stringFromLongtensor(outputs, show_token=True)
-	# print(str)
+
+
+
 	if len(outputs) != 0:
 		outputs = torch.cat(outputs, dim=0)
 	else:
 		outputs = torch.FloatTensor([]).view(0, word_size).to(device)
 
-	return outputs
+	return outputs, entropy_loss/(maxlen-1)
+	# return outputs, entropy_loss
 
 def KL_loss(m, logvar):
-	return torch.sum(0.5 * (-logvar + (m**2) + torch.exp(logvar) - 1))
+	# return -0.5 * torch.sum(1 + logvar - m**2 - logvar.exp())
+	return 0.5 * torch.sum(torch.exp(logvar) + m**2 - 1. - logvar)
 
 
 def evaluation(encoder, decoder, dataset,show=True):
-	# encoder.eval()
-	# decoder.eval()
-	# with torch.no_grad():
 	blue_score = []
 	for idx in range(len(dataset)):
 		data = dataset[idx]
@@ -276,8 +225,8 @@ def evaluation(encoder, decoder, dataset,show=True):
 		else:
 			inputs, c, targets, target_condition = data
 
-		z, mean, logvar = encoder(targets, target_condition)
-		outputs = use_decoder(z, target_condition, targets, use_teacher_forcing=False)
+		_, _, _, encoder_out_hidden, _, _ = encoder(targets, target_condition)
+		outputs,_ = use_decoder(encoder_out_hidden, target_condition, targets, use_teacher_forcing=False)
 
 		# show output by string
 		outputs_onehot = torch.max(torch.softmax(outputs, dim=1), 1)[1]
@@ -296,30 +245,24 @@ def evaluation(encoder, decoder, dataset,show=True):
 	words_list = []
 	for j in range(100):
 		words = []
-		# noise = ((encoder.sample_z()).unsqueeze(0)).unsqueeze(0) # torch.Size([1, 1, 32])
-		noise = torch.randn(1,1,32).to(device)
+		noise = torch.randn(1,1,latent_size).to(device)
 		for i in range(len(train_dataset.tenses)):
-			outputs = use_decoder(noise, int(i), None, False)
+			outputs,_ = use_decoder(noise, int(i), None, False)
 			outputs_onehot = torch.max(torch.softmax(outputs, dim=1), 1)[1]
 			output_str = train_dataset.chardict.stringFromLongtensor(outputs_onehot)
 			words.append(output_str)
 		words_list.append(words)
-	gaussian_score = get_gaussian_score(words)
+	gaussian_score = Gaussian_score(words)
 	if show:
 		print('generate word: ')
 		for i in range(len(words_list)): print(words_list[i])
-		print(' gaussian_score:',get_gaussian_score(words_list))
+		print(' gaussian_score:',Gaussian_score(words_list))
 
 	return sum(blue_score) / len(blue_score) , gaussian_score
 
 
-
+#compute BLEU-4 score
 def compute_bleu(output, reference):
-	"""
-	:param output: The word generated by your model
-	:param reference: The target word
-	:return:
-	"""
 	cc = SmoothingFunction()
 	if len(reference) == 3:
 		weights = (0.33,0.33,0.33)
@@ -327,17 +270,22 @@ def compute_bleu(output, reference):
 		weights = (0.25,0.25,0.25,0.25)
 	return sentence_bleu([reference], output,weights=weights,smoothing_function=cc.method1)
 
-def get_gaussian_score(words):
-	"""
-	:param words:
-	words = [['consult', 'consults', 'consulting', 'consulted'],
-			 ['plead', 'pleads', 'pleading', 'pleaded'],
-			 ['explain', 'explains', 'explaining', 'explained'],
-			 ['amuse', 'amuses', 'amusing', 'amused'], ....]
-	"""
+
+"""============================================================================
+example input of Gaussian_score
+
+words = [['consult', 'consults', 'consulting', 'consulted'],
+['plead', 'pleads', 'pleading', 'pleaded'],
+['explain', 'explains', 'explaining', 'explained'],
+['amuse', 'amuses', 'amusing', 'amused'], ....]
+
+the order should be : simple present, third person, present progressive, past
+============================================================================"""
+
+def Gaussian_score(words):
 	words_list = []
 	score = 0
-	yourpath = os.path.join('dataset','train.txt')  #should be your directory of train.txt
+	yourpath = 'dataset/train.txt'#should be your directory of train.txt
 	with open(yourpath,'r') as fp:
 		for line in fp:
 			word = line.split(' ')
@@ -349,84 +297,57 @@ def get_gaussian_score(words):
 					score += 1
 	return score/len(words)
 
+def sigmoid(x):
+	return 1 / (1 + np.exp(-x))
+def get_kl_weight(epoch,epochs,kl_annealing_type,time):
+	"""
+	:param epoch: i-th epoch
+	:param kl_annealing_type: 'monotonic' or 'cycle'
+	:param time:
+		if('monotonic'): # of epoch for kl_weight from 0.0 to reach 1.0
+		if('cycle'):     # of cycle
+	"""
+	assert kl_annealing_type=='monotonic' or kl_annealing_type=='cycle','kl_annealing_type not exist!'
+
+	if kl_annealing_type == 'monotonic':
+		return (1./(time-1))*(epoch-1) if epoch<time else 1.
+
+	else: #cycle
+		period = epochs//time
+		epoch %= period
+		KL_weight = sigmoid((epoch - period // 2) / (period // 10)) / 2
+		return KL_weight
+
 
 
 if __name__=='__main__':
-	#plot list
-	tfr_list, kld_w_list, LR_list = [], [], []
-	crossentropy_list, KL_loss_list, bleu_list, gaussian_list = [], [], [], []
-	for epoch in range(1, epochs+1):
+	device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-		if KL_cost_annealing == 'cyclical':
-			tmp = epoch%100
-			if tmp > 50 : kld_w = 1
-			else: kld_w = tmp*0.02
-		if KL_cost_annealing == 'monotonic':
-			if epoch < epochs*0.5 : kld_w = 1
-			else : kld_w = 1-(epoch-epochs*0.5)/(epochs*0.5)
+	train_dataset = wordsDataset(shuffle=True)
+	test_dataset = wordsDataset(False,shuffle=True)
+	word_size = train_dataset.chardict.n_words #26+2
+	num_condition = len(train_dataset.tenses) # 4 tenses
+	hidden_size = 256
+	latent_size = 32
+	condition_size = 8
+	teacher_forcing_ratio = 0.5
+	KLD_weight = 0.5
+	LR = 0.007
+	epochs = 1000
+	KL_cost_annealing = 'cyclical' # or 'monotonic'
 
-		if epoch < epochs*0.5 : tfr = 0.5
-		else :
-			tfr = max(0.5-0.5*(1/epochs)*epoch, 0)
+	encoder = EncoderRNN(word_size, hidden_size, latent_size, num_condition, condition_size).to(device)
+	decoder = DecoderRNN(word_size, hidden_size, latent_size, condition_size).to(device)
+	assert encoder.hidden_size == decoder.hidden_size, \
+		"Hidden dimensions of encoder and decoder must be equal!"
+	encoder.load_state_dict(torch.load('models/cyclical_best_encoder_epoch_153_bleu_0.9489649071223191.pt'))
+	decoder.load_state_dict(torch.load('models/cyclical_best_decoder_epoch_153_bleu_0.9489649071223191.pt'))
+	criterion = nn.CrossEntropyLoss()
 
-		for idx in range(len(train_dataset)):
-			encoder.train()
-			decoder.train()
-			crossentropy_list_tmp, KL_loss_list_tmp = [], []
-			data = train_dataset[idx]
-			inputs, c = data # inputs-> word(tensor([26,  0,  1,  0, 13,  3, 14, 13, 27])) ,
-							 # c-> tense conversion (0)
-
-
-			decoder_optimizer.zero_grad()
-			encoder_optimizer.zero_grad()
-
-			z, mean, logvar = encoder(inputs, c)
-			use = True if random.random() < tfr else False
-			outputs = use_decoder(z, c, inputs, use_teacher_forcing=use) #inputs = ground truth
-
-			# outputs_onehot = torch.max(torch.softmax(outputs, dim=1), 1)[1]
-			# inputs_str = train_dataset.chardict.stringFromLongtensor(inputs, check_end=True)
-			# outputs_str = train_dataset.chardict.stringFromLongtensor(outputs_onehot, check_end=True)
-			# print('inputs_str: ',inputs_str,'  outputs_str: ',outputs_str)
-
-
-			output_length = outputs.size(0)
-			# CrossEntropyLoss Input: (N, C)(N,C) where C = number of classes
-			# CrossEntropyLoss Target: (N)
-			entropy_loss = criterion(outputs, inputs[0:output_length].to(device))
-
-			kld_loss = KL_loss(mean, logvar)
-			(entropy_loss + (kld_w * kld_loss)).backward()
-			encoder_optimizer.step()
-			decoder_optimizer.step()
-			crossentropy_list_tmp.append(entropy_loss.item())
-			KL_loss_list_tmp.append(kld_loss.item())
-
-		blue_score, gaussian_score = evaluation(encoder, decoder, test_dataset,show=True)
-
-
-		#plot
-		tfr_list.append(tfr)
-		kld_w_list.append(kld_w)
-		LR_list.append(LR)
-		crossentropy_list.append(sum(crossentropy_list_tmp) / len(crossentropy_list_tmp))
-		KL_loss_list.append(sum(KL_loss_list_tmp) / len(KL_loss_list_tmp))
-		bleu_list.append(blue_score)
-		gaussian_list.append(gaussian_score)
-		print('epoch= ',epoch, 'blue_score=',blue_score, 'gaussian_score=',gaussian_score, 'crossentropy=',crossentropy_list[-1], 'KL_loss=',KL_loss_list[-1])
-		print('all loss=', (crossentropy_list[-1] + (kld_w * KL_loss_list[-1])))
-
-
-
-	fig = plt.figure()
-	plt.plot(tfr_list,color='b')
-	plt.plot(kld_w_list,color='g')
-	plt.plot(LR_list,color='r')
-	plt.plot(crossentropy_list,color='c')
-	plt.plot(KL_loss_list,color='m')
-	plt.plot(bleu_list,color='y')
-	plt.plot(gaussian_list,color='k')
-	plt.xlabel('epoch')
-	plt.show()
-	fig.savefig('BLEU'+'Crossentropyloss'+'KLloss'+'.png')
+	encoder.eval()
+	decoder.eval()
+	with torch.no_grad():
+		for i in range(100):
+			blue_score, gaussian_score = evaluation(encoder, decoder, test_dataset,show=True)
+			print('blue_score=',blue_score,' gaussian_score=',gaussian_score)
+			time.sleep(0.5)
