@@ -16,9 +16,12 @@ import torchvision.transforms as transforms
 import torchvision.utils as vutils
 from torch.autograd import Variable
 from torch.utils.data import DataLoader
-from datahelper import CLEVRDataset,  get_test_conditions
+
 from model import _netG, _netD
-from evaluator import EvaluationModel
+import sys
+sys.path.append('dataset/task_1/')
+from evaluator import evaluation_model
+from dataset import ICLEVRLoader, get_test_conditions, get_test_conditions_new
 from util import save_image
 import copy
 from torch.utils.tensorboard import SummaryWriter
@@ -35,12 +38,12 @@ if __name__=='__main__':
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     writer = SummaryWriter()
     # load training data
-    dataset_train = CLEVRDataset()
+    dataset_train = ICLEVRLoader()
     loader_train = DataLoader(dataset_train,batch_size=batchSize,shuffle=True,num_workers=1,drop_last=True)
 
     netG = _netG(ngpu=1, nz=110).to(device) #nz: size of the latent z vector
     netD = _netD(ngpu=1, num_classes=24).to(device)
-    evaluation_model=EvaluationModel()
+    evaluation_model=evaluation_model()
     # setup optimizer
     optimizerD = optim.Adam(netD.parameters(), lr=0.0002, betas=(0.5, 0.999))
     optimizerG = optim.Adam(netG.parameters(), lr=0.0002, betas=(0.5, 0.999))
@@ -109,6 +112,8 @@ if __name__=='__main__':
 
             if i % 50 == 0: print(i, errD_fake.item(),errD_real.item(),errG.data.item())
 
+
+
         # evaluate
         netG.eval()
         netD.eval()
@@ -125,18 +130,21 @@ if __name__=='__main__':
             gen_imgs=netG(noise)
         test_conditions = get_test_conditions()
         score = evaluation_model.eval(gen_imgs,test_conditions)
-        print(f'epoch{epoch}_score{score:.2f}',errD_fake.item(),errD_real.item(),errG.data.item())
+        test_conditions_new = get_test_conditions_new()
+        score_new = evaluation_model.eval(gen_imgs,test_conditions)
+        print('epoch:',epoch,'score:',score,'score_new:',score_new)
 
         best_G = copy.deepcopy(netG.state_dict())
         best_D = copy.deepcopy(netD.state_dict())
-        torch.save(best_G,'models/'+ f'epoch{epoch}_score{score:.2f}_G.pt')
-        torch.save(best_D,'models/'+ f'epoch{epoch}_score{score:.2f}_D.pt')
+        torch.save(best_G,'models/'+ str(epoch)+'_'+str(score)+'_'+str(score_new)+'_G.pt')
+        torch.save(best_D,'models/'+ str(epoch)+'_'+str(score)+'_'+str(score_new)+'_D.pt')
 
         # savefig
         save_image(gen_imgs, os.path.join('results', f'epoch{epoch}.png'), nrow=8, normalize=True)
 
-        writer.add_scalar("errD_fake", errD_fake.item(), epoch)
-        writer.add_scalar("errD_real", errD_real.item(), epoch)
-        writer.add_scalar("errG", errG.data.item(), epoch)
-        writer.add_scalar("score", score, epoch)
-    writer.flush()
+        writer.add_scalars("cGAN_task1_Train", {    "errD_fake":errD_fake.item(),\
+                                                    "errD_real": errD_real.item(),\
+                                                    "errG": errG.item(),\
+                                                    "score": score,\
+                                                    "score_new": score_new}, epoch)
+        writer.flush()
