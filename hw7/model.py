@@ -1,7 +1,13 @@
 import torch
 import torch.nn as nn
 
-
+def weights_init(m):
+    classname = m.__class__.__name__
+    if classname.find('Conv') != -1:
+        m.weight.data.normal_(0.0, 0.02)
+    elif classname.find('BatchNorm') != -1:
+        m.weight.data.normal_(1.0, 0.02)
+        m.bias.data.fill_(0)
 
 class _netG(nn.Module):
     def __init__(self, ngpu, nz):
@@ -10,7 +16,7 @@ class _netG(nn.Module):
         self.nz = nz
 
         # first linear layer
-        self.fc1 = nn.Linear(110, 384)
+        self.fc1 = nn.Linear(nz, 384)
         # Transposed Convolution 2
         self.tconv2 = nn.Sequential(
             nn.ConvTranspose2d(384, 192, 4, 1, 0, bias=False),
