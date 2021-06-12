@@ -27,9 +27,9 @@ import copy
 from torch.utils.tensorboard import SummaryWriter
 
 
-batchSize = 16
-nz=110
-num_classes=24
+batchSize = 32
+nz = 110
+num_classes = 24
 epochs = 200
 
 
@@ -79,7 +79,8 @@ if __name__=='__main__':
             aux_label = aux_label.to(device)
             aux_errD_real = aux_criterion(predict_classes, aux_label)
             errD_real = dis_errD_real + aux_errD_real
-            errD_real.backward(retain_graph=True)
+            # errD_real.backward(retain_graph=True)
+            # optimizerD.step()
 
             # train with fake
             with torch.no_grad():
@@ -100,8 +101,12 @@ if __name__=='__main__':
             dis_errD_fake = dis_criterion(predict_realfake, dis_label)
             aux_errD_fake = aux_criterion(predict_classes, aux_label)
             errD_fake = dis_errD_fake + aux_errD_fake
-            errD_fake.backward(retain_graph=True)
+            # errD_fake.backward(retain_graph=True)
+            # optimizerD.step()
+            errD = errD_fake + errD_real
+            errD.backward(retain_graph=True)
             optimizerD.step()
+
 
             ############################
             # (2) Update G network: maximize log(D(G(z)))
@@ -113,7 +118,7 @@ if __name__=='__main__':
             predict_realfake, predict_classes = netD(fake)
             dis_errG = dis_criterion(predict_realfake, dis_label)
             aux_errG = aux_criterion(predict_classes, aux_label)
-            errG = dis_errG + aux_errG
+            errG = (dis_errG + aux_errG)
             errG.backward(retain_graph=True)
             optimizerG.step()
 
@@ -144,7 +149,7 @@ if __name__=='__main__':
                                                         "score": score  }, iter)
             writer.flush()
             if i % 10 == 0: print(i, errD_fake.item(),errD_real.item(),errG.data.item(),'score = ',score)
-        
+
 
 
 
