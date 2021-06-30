@@ -28,7 +28,7 @@ from torch.utils.tensorboard import SummaryWriter
 
 
 batchSize = 32
-nz = 48
+nz = 36
 num_classes = 24
 epochs = 1000
 
@@ -51,7 +51,7 @@ if __name__=='__main__':
     optimizerG = optim.Adam(netG.parameters(), lr=0.0002, betas=(0.5, 0.999))
     # loss functions
     dis_criterion = nn.BCELoss().to(device)
-    aux_criterion = nn.BCELoss().to(device)
+    aux_criterion = nn.NLLLoss().to(device)
 
     real_label = 1
     fake_label = 0
@@ -62,7 +62,6 @@ if __name__=='__main__':
             netG.train()
             netD.train()
             iter += 1
-            # conditions = Variable(read_conditions)
 
             ############################
             # (1) Update D network: maximize log(D(x)) + log(1 - D(G(z)))
@@ -79,8 +78,7 @@ if __name__=='__main__':
             aux_label = copy.deepcopy(conditions)
             aux_label = aux_label.to(device)
             aux_errD_real = aux_criterion(predict_classes, aux_label)
-            # errD_real = dis_errD_real + aux_errD_real
-            errD_real = dis_errD_real
+            errD_real = dis_errD_real*0.6 + aux_errD_real*0.4
             errD_real.backward(retain_graph=True)
             optimizerD.step()
 
@@ -101,8 +99,7 @@ if __name__=='__main__':
             predict_realfake, predict_classes = netD(fake)
             dis_errD_fake = dis_criterion(predict_realfake, dis_label)
             aux_errD_fake = aux_criterion(predict_classes, aux_label)
-            errD_fake = dis_errD_fake
-            # errD_fake = dis_errD_fake + aux_errD_fake
+            errD_fake = dis_errD_fake*0.6 + aux_errD_fake*0.4
             errD_fake.backward(retain_graph=True)
             optimizerD.step()
 
@@ -117,8 +114,7 @@ if __name__=='__main__':
             predict_realfake, predict_classes = netD(fake)
             dis_errG = dis_criterion(predict_realfake, dis_label)
             aux_errG = aux_criterion(predict_classes, aux_label)
-            # errG = (dis_errG + aux_errG)
-            errG = dis_errG
+            errG = (dis_errG + aux_errG)
             errG.backward(retain_graph=True)
             optimizerG.step()
 
